@@ -47,6 +47,7 @@ from xenon.repl.project_context import ProjectContext
 from xenon.repl.prompt_optimizer import get_intent_display, optimize_prompt
 from xenon.repl.status_bar import StatusBar
 from xenon.repl.system_config import get_config
+from xenon.repl.paste_guard import arm_paste_watchdog, reset_stuck_paste
 
 from xenon.repl.repl_input import (  # noqa: E402
     _read_input_unix,
@@ -1675,6 +1676,11 @@ class REPL:
     def _read_input_pt(self) -> str:
         """上下平行线定界输入；运行状态独立固定在终端屏幕底端。"""
         self._paste_store.reset()
+        # Windows prompt_toolkit：粘贴结束标记丢失会让解析器永久卡在括号粘贴
+        # 状态、吞掉后续所有按键。先复位上一轮可能残留的卡死状态，再挂上
+        # 本轮的空闲超时看门狗（两者均为防御式，失败不影响输入）。
+        reset_stuck_paste(self._pt_session)
+        arm_paste_watchdog(self._pt_session)
         if hasattr(self, "_completer"):
             self._completer.update_commands(list(COMMANDS.keys()))
             if hasattr(self, "model_pool") and self.model_pool:
