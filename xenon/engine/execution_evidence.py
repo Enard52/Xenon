@@ -80,6 +80,8 @@ def _workspace_snapshot(workspace_root: Path | None) -> tuple[str, str]:
             cwd=workspace_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=False,
         )
@@ -88,6 +90,8 @@ def _workspace_snapshot(workspace_root: Path | None) -> tuple[str, str]:
             cwd=workspace_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
         )
@@ -108,12 +112,15 @@ class ExecutionEvidence:
     failed_calls: list[ToolCall] = field(default_factory=list)
     workspace_status: str = ""
     workspace_diff: str = ""
+    workspace_baseline_status: str = ""
+    workspace_baseline_diff: str = ""
 
     @classmethod
     def capture(
         cls,
         tracker: ToolExecutionTracker | None,
         workspace_root: Path | None = None,
+        baseline: dict[str, str] | None = None,
     ) -> "ExecutionEvidence":
         calls = list(tracker.calls) if tracker is not None else []
         changed_files: set[str] = set()
@@ -130,7 +137,17 @@ class ExecutionEvidence:
                 if _TEST_COMMAND.search(command):
                     tests.append(command)
         status, diff = _workspace_snapshot(workspace_root)
-        return cls(calls, changed_files, tests, failures, status, diff)
+        baseline = baseline or {}
+        return cls(
+            calls,
+            changed_files,
+            tests,
+            failures,
+            status,
+            diff,
+            str(baseline.get("status", "")),
+            str(baseline.get("diff", "")),
+        )
 
     @property
     def mutation_count(self) -> int:
@@ -142,7 +159,17 @@ class ExecutionEvidence:
 
     @property
     def has_workspace_change(self) -> bool:
+        if self.workspace_baseline_status or self.workspace_baseline_diff:
+            return (
+                self.workspace_status != self.workspace_baseline_status
+                or self.workspace_diff != self.workspace_baseline_diff
+            )
         return bool(self.changed_files or self.workspace_status)
+
+    def has_workspace_change_since_baseline(self) -> bool:
+        """Explicit alias used by gates when classifying command/git writes."""
+
+        return self.has_workspace_change
 
     @property
     def implementation_verified(self) -> bool:

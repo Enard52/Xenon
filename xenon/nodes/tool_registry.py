@@ -41,6 +41,7 @@ for a narrower ``ToolInvocation`` object in a later compatibility release.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any, Callable, Literal
 
 
@@ -62,6 +63,10 @@ class ToolDefinition:
     # 风险级别：INFO=只读无需确认, WRITE=写操作需确认, SENSITIVE=高危需确认。
     # 插件工具默认 SENSITIVE，遵守「未知即从严」原则（与 MCP 未知工具一致）。
     risk: ToolRisk = "SENSITIVE"
+    # Capability metadata is the migration seam for the new TaskRuntime.  An
+    # empty value means derive the conservative default from ``risk`` and the
+    # tool name; callers should use ``required_capabilities`` below.
+    capabilities: frozenset[str] = field(default_factory=frozenset)
 
 
 class ToolRegistry:
@@ -79,6 +84,7 @@ class ToolRegistry:
         category: str = "plugin",
         params: dict[str, str] | None = None,
         risk: ToolRisk = "SENSITIVE",
+        capabilities: set[str] | frozenset[str] | None = None,
         replace: bool = False,
     ) -> ToolDefinition:
         normalized = str(name).strip()
@@ -104,6 +110,7 @@ class ToolRegistry:
             category=str(category or "plugin"),
             params=dict(params or {}),
             risk=risk,
+            capabilities=frozenset(str(item) for item in (capabilities or ())),
         )
         self._definitions[normalized] = definition
         return definition
@@ -117,6 +124,7 @@ class ToolRegistry:
         category: str = "builtin",
         params: dict[str, str] | None = None,
         risk: ToolRisk = "SENSITIVE",
+        capabilities: set[str] | frozenset[str] | None = None,
     ) -> ToolDefinition:
         return self.register(
             name,
@@ -125,6 +133,7 @@ class ToolRegistry:
             category=category,
             params=params,
             risk=risk,
+            capabilities=capabilities,
         )
 
     def get(self, name: str) -> ToolDefinition | None:
@@ -171,6 +180,68 @@ class ToolRegistry:
             for d in self._definitions.values()
             if d.category == "plugin"
         }
+
+
+_WORKSPACE_READ_TOOLS = frozenset(
+    {"read_file", "list_files", "search_files", "code_index", "ast_analyze", "diff_preview"}
+)
+_NETWORK_READ_TOOLS = frozenset(
+    {"web_fetch", "docs_fetch", "github_fetch", "weather", "datetime"}
+)
+_WORKSPACE_WRITE_TOOLS = frozenset(
+    {"write_file", "edit_file", "create_directory", "batch_write", "batch_edit", "refactor", "clone_repo"}
+)
+
+
+def required_capabilities(
+    tool_name: str,
+    *,
+    definition: ToolDefinition | None = None,
+    params: dict[str, Any] | None = None,
+) -> frozenset[str]:
+    """Return the canonical TaskRuntime capabilities required by a tool.
+
+    This is intentionally housed next to the tool registry so schemas,
+    policy checks, and future UI permission prompts can consume one source.
+    """
+
+    name = str(tool_name)
+    if name == "mcp_call":
+        remote = str((params or {}).get("tool_name", "")).lower()
+        if re.search(r"(?:execute|run|command|shell|terminal|deploy)", remote):
+            return frozenset({"process_execute"})
+        if re.search(
+            r"(?:create|write|save|edit|update|delete|remove|insert|append|set|add|send|post|put|publish|commit|merge)",
+            remote,
+        ):
+            return frozenset({"network_write"})
+        return frozenset({"network_read"})
+    if definition is None:
+        definition = BUILTIN_TOOL_REGISTRY.get(name)
+    if definition is not None and definition.capabilities:
+        return definition.capabilities
+    if name in _WORKSPACE_READ_TOOLS:
+        return frozenset({"workspace_read"})
+    if name in _NETWORK_READ_TOOLS:
+        return frozenset({"network_read"})
+    if name in _WORKSPACE_WRITE_TOOLS:
+        return frozenset({"workspace_write"})
+    if name == "git":
+        return frozenset({"git_mutate"})
+    if name == "spawn_agent":
+        return frozenset({"spawn_agent"})
+    if name == "list_skills":
+        return frozenset({"workspace_read"})
+    if name == "create_skill":
+        return frozenset({"workspace_write"})
+    if name == "command":
+        return frozenset({"process_execute"})
+    if definition is not None and definition.risk == "INFO":
+        return frozenset({"workspace_read"})
+    if definition is not None and definition.risk == "WRITE":
+        return frozenset({"workspace_write"})
+    # Unknown and dynamic tools remain conservative.
+    return frozenset({"process_execute"})
 
 
 # Built-in method names are the single source of truth during the migration.
@@ -255,6 +326,7 @@ def register_tool_handler(
     params: dict[str, str] | None = None,
     risk: ToolRisk = "SENSITIVE",
     category: str = "plugin",
+    capabilities: set[str] | frozenset[str] | None = None,
     replace: bool = False,
 ) -> Any:
     """Register a Python handler in the process-wide extension registry.
@@ -288,6 +360,7 @@ def register_tool_handler(
                 params=params,
                 risk=risk,
                 category=category,
+                capabilities=capabilities,
                 replace=replace,
             )
             return fn
@@ -302,5 +375,6 @@ def register_tool_handler(
         params=params or {},
         risk=risk,
         category=category,
+        capabilities=capabilities,
         replace=replace,
     )

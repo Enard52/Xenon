@@ -637,6 +637,8 @@ class TestDryRunWorkflow:
             [sys.executable, "-m", "xenon.main", "run", str(workflow_src), "--dry-run"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
             cwd=str(tmp_path),
         )
@@ -661,6 +663,8 @@ class TestCLISubcommands:
             [sys.executable, "-m", "xenon.main", "--help"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
         )
         output = result.stdout
@@ -694,6 +698,8 @@ class TestCLISubcommands:
                 [sys.executable, "-c", "from xenon.main import cli; print('OK')"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             assert result.returncode == 0

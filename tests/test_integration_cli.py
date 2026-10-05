@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import stat
 import sys
 import threading
@@ -310,7 +311,8 @@ def test_mcp_stdio_config_from_stdin_persists_but_redacts_secrets(
     assert payload["server"]["env_keys"] == ["AGENTPLAN_API_KEY"]
     stored = yaml.safe_load(credentials.read_text(encoding="utf-8"))
     assert stored["_mcp_servers"][0]["env"]["AGENTPLAN_API_KEY"] == secret
-    assert stat.S_IMODE(credentials.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(credentials.stat().st_mode) == 0o600
 
     code, stdout, _, _, _ = _run(["mcp", "list", "--json"], tmp_path, capsys)
     assert code == 0

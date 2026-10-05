@@ -24,3 +24,15 @@ def _reset_provider_probe_cache():
     invalidate_provider_probe()
     yield
     invalidate_provider_probe()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_runtime_flags(monkeypatch):
+    """Do not let a developer's shell PTY flag leak into unit tests.
+
+    Tests that cover ``XENON_NO_PT`` set it explicitly inside the test.  All
+    other UI tests need the normal prompt-toolkit session regardless of the
+    shell used to launch pytest.
+    """
+    monkeypatch.delenv("XENON_NO_PT", raising=False)
+    yield

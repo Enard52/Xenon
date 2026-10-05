@@ -283,6 +283,10 @@ class BaseEngine(ABC):
         )
 
         ctx = context or AgentContext()
+        if workspace_root is None:
+            from xenon.engine.execution_evidence import workspace_root_for
+
+            workspace_root = workspace_root_for(self)
         ledger = self.evidence_ledger or ctx.get("_evidence_ledger")
         if ledger is None:
             raise RuntimeError("evidence ledger is not bound to this task")
@@ -318,7 +322,12 @@ class BaseEngine(ABC):
                 # 不落盘」，这是本门的原始目的）。
                 from xenon.engine.evidence_gate import has_successful_write
 
-                if has_successful_write(tracker):
+                runtime = ctx.get_runtime() if hasattr(ctx, "get_runtime") else None
+                if has_successful_write(
+                    tracker,
+                    workspace_root=workspace_root,
+                    baseline=getattr(runtime, "workspace_baseline", None),
+                ):
                     ledger.append(
                         LifecyclePhase.DELIVERY,
                         EventKind.GATE_VERDICT,
@@ -359,6 +368,10 @@ class BaseEngine(ABC):
         不是终点，拦截结果要反馈回 LLM。
         """
         ctx = context or AgentContext()
+        if workspace_root is None:
+            from xenon.engine.execution_evidence import workspace_root_for
+
+            workspace_root = workspace_root_for(self)
         ledger = self.evidence_ledger or ctx.get("_evidence_ledger")
         if ledger is None:
             raise RuntimeError("evidence ledger is not bound to this task")

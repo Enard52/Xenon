@@ -6,6 +6,7 @@ The group owns skill discovery, creation, execution, and import workflows.
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import TYPE_CHECKING, Any
 
 from xenon.repl.command_groups.common import console
@@ -605,6 +606,8 @@ def _github_curl_get(url: str):
         command,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
         input=input_text,
     )
@@ -640,7 +643,13 @@ def _skill_import_from_url(manager, url: str) -> str:
         # 使用 gh CLI 或 curl 获取仓库内容
         # 方法 1: 尝试 gh CLI
         gh_available = (
-            subprocess.run(["which", "gh"], capture_output=True, text=True).returncode
+            subprocess.run(
+                ["where", "gh"] if sys.platform == "win32" else ["which", "gh"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            ).returncode
             == 0
         )
 
@@ -650,6 +659,8 @@ def _skill_import_from_url(manager, url: str) -> str:
                 ["gh", "repo", "view", f"{owner}/{repo}", "--json", "name,description"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
             )
             if result.returncode == 0:

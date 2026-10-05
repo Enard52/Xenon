@@ -47,6 +47,23 @@ def test_tool_execute_result_always_exposes_structured_failure():
     assert result.structured.error == "超时"
 
 
+def test_tool_execute_result_outcome_code_overrides_legacy_raw_payload():
+    result = ToolExecuteResult(
+        "write_file",
+        False,
+        "拒绝",
+        error="权限不足",
+        raw={
+            "success": False,
+            "error": "权限不足",
+            "outcome_code": "terminal",
+        },
+        outcome_code="permission_denied",
+    )
+    assert result.structured is not None
+    assert result.structured.outcome_code == "permission_denied"
+
+
 def test_list_files_cursor_returns_stable_pages(tmp_path: Path):
     for name in ("c.py", "a.py", "b.py", "d.txt"):
         (tmp_path / name).write_text(name, encoding="utf-8")

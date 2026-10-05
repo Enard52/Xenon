@@ -26,6 +26,11 @@ from xenon.engine.trace import TraceContextFilter  # noqa: E402
 logger.addFilter(TraceContextFilter())
 
 
+def _runtime_baseline(ctx: AgentContext | None) -> dict[str, str] | None:
+    runtime = ctx.get_runtime() if ctx is not None else None
+    return getattr(runtime, "workspace_baseline", None)
+
+
 class SteeringMixin:
     """组合引擎共享的 mid-task steering 原语。
 
@@ -129,6 +134,14 @@ def _isolated_ctx(ctx: AgentContext) -> AgentContext:
 
     fresh = AgentContext()
     fresh.set_conversation_messages(list(ctx.get_conversation_messages()))
+    runtime = ctx.get_runtime() if hasattr(ctx, "get_runtime") else None
+    if runtime is not None:
+        fresh.bind_runtime(runtime)
+    # Keep the compatibility boundary visible to old nodes while the runtime
+    # remains authoritative for all new policy checks.
+    for key in ("_execution_level", "_execution_reason", "_current_user_request"):
+        if ctx.has(key):
+            fresh.set(key, ctx.get(key))
     if hasattr(ctx, "record_tool_checkpoint"):
         fresh.set_tool_checkpoint_callback(ctx.record_tool_checkpoint)
     ledger = ctx.get("_evidence_ledger")
@@ -297,6 +310,7 @@ class PlanReactEngine(SteeringMixin):
         self._reset_steering()  # mid-task steering：每轮 run 重置
         aggregate = ToolExecutionTracker()
         self._last_tracker = aggregate
+        self._active_context = ctx
         self.planner._ctx_mgr = ctx_mgr
         # v0.9.1: 重置循环检测器
         self._loop_detector.reset()
@@ -324,7 +338,9 @@ class PlanReactEngine(SteeringMixin):
         for index, step in enumerate(steps, 1):
             step_id = step.get("id", index)
             task = str(step.get("task") or "")
-            evidence = ExecutionEvidence.capture(aggregate, workspace_root)
+            evidence = ExecutionEvidence.capture(
+                aggregate, workspace_root, baseline=_runtime_baseline(ctx)
+            )
             reason = _skip_reason(
                 step, evidence, implementation_steps=implementation_steps
             )
@@ -398,7 +414,9 @@ class PlanReactEngine(SteeringMixin):
             _merge_tracker(aggregate, self.reactor._last_tracker)
             if self.reactor.last_model_used:
                 self.last_model_used = self.reactor.last_model_used
-            after = ExecutionEvidence.capture(aggregate, workspace_root)
+            after = ExecutionEvidence.capture(
+                aggregate, workspace_root, baseline=_runtime_baseline(ctx)
+            )
             results.append(
                 {
                     "step_id": step_id,
@@ -436,10 +454,14 @@ class PlanReactEngine(SteeringMixin):
         # v0.8.3: 学习式验证循环——步骤执行完毕后，若需要验证则进入修复循环
         self.verification_loop.reset()
         if getattr(self, "_verification_enabled", True):
-            evidence = ExecutionEvidence.capture(aggregate, workspace_root)
+            evidence = ExecutionEvidence.capture(
+                aggregate, workspace_root, baseline=_runtime_baseline(ctx)
+            )
             self.verification_loop._active = True
         while self.verification_loop.should_continue:
-            repair_prompt = self.verification_loop.feed(evidence, user_input)
+            repair_prompt = self.verification_loop.feed(
+                evidence, user_input, context=ctx
+            )
             if repair_prompt is None:
                 break
             logger.warning(
@@ -461,7 +483,9 @@ class PlanReactEngine(SteeringMixin):
             except Exception as exc:
                 logger.warning("PlanReact 验证修复失败: %s", exc)
                 break
-            evidence = ExecutionEvidence.capture(aggregate, workspace_root)
+            evidence = ExecutionEvidence.capture(
+                aggregate, workspace_root, baseline=_runtime_baseline(ctx)
+            )
             outcome_tag = "fixed" if evidence.successful_tests else "still_failing"
             self.verification_loop.record_outcome(evidence, outcome=outcome_tag)
 
@@ -478,7 +502,9 @@ class PlanReactEngine(SteeringMixin):
         ok = [result for result in results if result.get("status") == "ok"]
         failed = [result for result in results if result.get("status") == "failed"]
         evidence = ExecutionEvidence.capture(
-            self._last_tracker, workspace_root_for(self.reactor)
+            self._last_tracker,
+            workspace_root_for(self.reactor),
+            baseline=_runtime_baseline(getattr(self, "_active_context", None)),
         )
 
         # Coding/tool runs already have a final ReAct answer plus verified state.
@@ -588,7 +614,9 @@ class _ReflectionCombination(SteeringMixin):
         self._last_tracker = aggregate
         self.last_model_used = initial_model_used
         root = workspace_root_for(self.repairer)
-        initial_evidence = ExecutionEvidence.capture(aggregate, root)
+        initial_evidence = ExecutionEvidence.capture(
+            aggregate, root, baseline=_runtime_baseline(ctx)
+        )
         state_change_required = bool(_IMPLEMENT_STEP.search(user_input))
         review_ctx = _isolated_ctx(ctx)
 
@@ -672,7 +700,9 @@ class _ReflectionCombination(SteeringMixin):
 
         repair_tracker = self.repairer._last_tracker
         _merge_tracker(aggregate, repair_tracker)
-        repaired_evidence = ExecutionEvidence.capture(aggregate, root)
+        repaired_evidence = ExecutionEvidence.capture(
+            aggregate, root, baseline=_runtime_baseline(ctx)
+        )
         repair_changed_state = bool(
             repair_tracker
             and any(call.success for call in repair_tracker.calls)
@@ -729,10 +759,14 @@ class _ReflectionCombination(SteeringMixin):
         # v0.8.3: 学习式验证循环——修复后检查是否需要进一步验证
         self.verification_loop.reset()
         if getattr(self, "_verification_enabled", True):
-            evidence = ExecutionEvidence.capture(aggregate, root)
+            evidence = ExecutionEvidence.capture(
+                aggregate, root, baseline=_runtime_baseline(ctx)
+            )
             self.verification_loop._active = True
         while self.verification_loop.should_continue:
-            v_prompt = self.verification_loop.feed(evidence, user_input)
+            v_prompt = self.verification_loop.feed(
+                evidence, user_input, context=ctx
+            )
             if v_prompt is None:
                 break
             logger.warning(
@@ -755,7 +789,9 @@ class _ReflectionCombination(SteeringMixin):
             except Exception as exc:
                 logger.warning("Reflection组合 验证修复失败: %s", exc)
                 break
-            evidence = ExecutionEvidence.capture(aggregate, root)
+            evidence = ExecutionEvidence.capture(
+                aggregate, root, baseline=_runtime_baseline(ctx)
+            )
             outcome_tag = "fixed" if evidence.successful_tests else "still_failing"
             self.verification_loop.record_outcome(evidence, outcome=outcome_tag)
 

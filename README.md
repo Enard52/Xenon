@@ -14,7 +14,7 @@ Xenon 不是又一个 AI 编程助手，而是让 Agent **可信地运行**所�
 - 🔄 **7 种推理范式**：ReAct / Plan-Execute / Reflection 及其组合 — 可替换、可观察
 - 📊 **可复现评测**：SWE-bench Lite **40.0%** 通过率（同模型 +6.7pp），交互与评测共享约束
 - 🧠 **运行韧性（v0.9.x）**：智能检查点 + 语义边界续写、全引擎循环检测、空洞回答识别
-- 🎯 **生产就绪**：v0.8.5 修复全部沙箱逃逸路径并锁定回归测试，v0.9.1 持续加固
+- 🎯 **生产就绪**：v0.8.5 修复全部沙箱逃逸路径并锁定回归测试，v0.9.2 持续加固
 
 可以当命令行工具直接用，也可以当库嵌入你的 Agent 评测流程。Python 3.10+。
 
@@ -22,7 +22,7 @@ Xenon 不是又一个 AI 编程助手，而是让 Agent **可信地运行**所�
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml/badge.svg)](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/xianyu-sheng/Xenon/branch/main/graph/badge.svg)](https://codecov.io/gh/xianyu-sheng/Xenon)
-[![release v0.9.1](https://img.shields.io/badge/release-v0.9.1-orange.svg)](https://github.com/xianyu-sheng/Xenon/releases/tag/v0.9.1)
+[![release v0.9.2](https://img.shields.io/badge/release-v0.9.2-orange.svg)](https://github.com/xianyu-sheng/Xenon/releases/tag/v0.9.2)
 
 代码托管：
 [GitHub](https://github.com/xianyu-sheng/Xenon) ·
@@ -90,6 +90,18 @@ Xenon 要回答的核心问题不是「模型能不能写代码」，而是「**
 - 🧭 **LSP 代码导航**：基于 Jedi 的定义 / 引用导航，以及 GitHub 仓库检索
   与摘要分析工具
 
+### 跨平台运行时一致性（v0.9.2）
+
+- 🧭 **单一任务运行时**：每轮请求只创建一个不可变 `TurnContract`，由
+  `TaskRuntime` 状态机统一管理路由、执行、恢复、验证和交付，工具、引擎与
+  REPL 消费同一份能力与结果来源。
+- ♻️ **有界恢复控制器**：权限、策略、证据闸门拒绝和未知副作用统一归一为
+  标准结果码；重复的拒绝调用会被阻止并给出可执行替代方向，避免 Agent 原地重试。
+- 🪟 **Windows / GBK 兼容**：MCP 子进程使用线程读取管道，统一 UTF-8 并对
+  非法字节安全替换；命令、路径、PTY 和用户目录处理适配 Windows。
+- 🔑 **可靠的配置向导**：Windows 粘贴会过滤控制序列，API Key 以 `*` 显示并
+  在保存前验证厂商连通性，避免把无效凭据静默带入后续对话。
+
 ---
 
 ## 架构
@@ -146,7 +158,7 @@ Xenon 要回答的核心问题不是「模型能不能写代码」，而是「**
 
 ```bash
 # 从 GitHub 安装指定版本
-pip install -U "git+https://github.com/xianyu-sheng/Xenon.git@v0.9.1"
+pip install -U "git+https://github.com/xianyu-sheng/Xenon.git@v0.9.2"
 
 # 或克隆源码后本地安装
 git clone https://github.com/xianyu-sheng/Xenon.git

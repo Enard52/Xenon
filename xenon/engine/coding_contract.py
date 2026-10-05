@@ -26,7 +26,13 @@ _DIFF_FENCE = re.compile(r"```(?:diff|patch)\s*\n(.*?)```", re.DOTALL | re.IGNOR
 
 
 def _git_diff(worktree: Path) -> str:
-    return subprocess.check_output(["git", "diff", "--binary"], cwd=worktree, text=True)
+    return subprocess.check_output(
+        ["git", "diff", "--binary"],
+        cwd=worktree,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def extract_unified_diff(answer: str) -> str | None:
@@ -83,6 +89,8 @@ def finalize_coding_run(
         input=candidate,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if check.returncode != 0:
         return CodingRunResult(
@@ -100,6 +108,8 @@ def finalize_coding_run(
         input=candidate,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if applied.returncode != 0:
         return CodingRunResult(

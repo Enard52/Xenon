@@ -10,12 +10,15 @@
 from __future__ import annotations
 
 import os
-import pty
+import pytest
 import sys
 import threading
 import time
 
-import pytest
+try:
+    import pty
+except ImportError:
+    pytest.skip("POSIX termios is not available on Windows", allow_module_level=True)
 
 from xenon.repl.setup_wizard import _masked_input
 

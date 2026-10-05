@@ -25,6 +25,11 @@ class AgentContext:
         self._history: list[dict[str, Any]] = []  # 每步快照，用于调试回溯
         self._conversation_messages: list[dict[str, str]] = []
         self._evidence_runtime: Any = None
+        # The per-turn TaskRuntime is intentionally kept outside ``_store`` so
+        # session serialization never captures mutable engine state.  During
+        # migration, legacy ``_execution_level`` keys remain in ``_store`` as
+        # compatibility fields while new code reads ``context.runtime``.
+        self._task_runtime: Any = None
         # Tool execution can happen in Plan-Execute worker threads.  Keep its
         # durable checkpoint updates atomic without changing the historical
         # single-threaded contract of the rest of AgentContext.
@@ -40,6 +45,34 @@ class AgentContext:
 
     def update(self, data: dict[str, Any]) -> None:
         self._store.update(data)
+
+    # ── TaskRuntime single source of truth ─────────────────
+    @property
+    def runtime(self) -> Any:
+        """Return the bound per-turn runtime, or raise a clear error."""
+        if self._task_runtime is None:
+            raise RuntimeError("task runtime is not bound to this context")
+        return self._task_runtime
+
+    def get_runtime(self) -> Any | None:
+        """Return the bound TaskRuntime without creating one."""
+        return self._task_runtime
+
+    def bind_runtime(self, runtime: Any, *, replace: bool = False) -> Any:
+        """Bind the current TaskRuntime for this execution context.
+
+        A runtime cannot be replaced while an engine is using the context by
+        default.  REPLs start a fresh turn explicitly with ``replace=True``;
+        this keeps the single-source invariant while allowing a persistent
+        session context to host multiple completed turns.
+        """
+        if runtime is None:
+            raise ValueError("runtime must not be None")
+        existing = self._task_runtime
+        if existing is not None and existing is not runtime and not replace:
+            raise RuntimeError("a different task runtime is already bound")
+        self._task_runtime = runtime
+        return runtime
 
     def has(self, key: str) -> bool:
         return key in self._store

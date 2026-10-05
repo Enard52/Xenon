@@ -75,7 +75,13 @@ CODE_EDITING_ENGINES = tuple(n for n in ALL_ENGINES if n not in _NON_CODE_EDITIN
 
 
 def _git(cwd: Path, *args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=cwd, text=True).strip()
+    return subprocess.check_output(
+        ["git", *args],
+        cwd=cwd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    ).strip()
 
 
 def _prompt(instance: dict[str, Any]) -> str:

@@ -1039,7 +1039,13 @@ class ToolNode(
                         cmd = cmd.replace(f"{{{key}}}", shlex.quote(str(val)))
                 try:
                     result = subprocess.run(
-                        cmd, shell=True, capture_output=True, text=True, timeout=30
+                        cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        encoding="utf-8",
+                        errors="replace",
                     )
                     output = result.stdout.strip()
                     if result.returncode != 0:

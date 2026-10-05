@@ -8,6 +8,7 @@ Shortcut Manager — 自定义快捷指令管理器。
 from __future__ import annotations
 
 import logging
+import re
 import shlex
 import subprocess
 import sys
@@ -26,6 +27,13 @@ def _shell_quote(value) -> str:
     """
     text = str(value)
     if sys.platform == "win32":
+        # PowerShell's ``echo``/Write-Output treats quoted arguments as
+        # separate pipeline objects, so ``echo hello 'Alice'`` becomes two
+        # lines.  Keep simple tokens unquoted and quote only values that need
+        # escaping; this preserves command output while retaining injection
+        # protection for spaces and metacharacters.
+        if re.fullmatch(r"[A-Za-z0-9_./:-]+", text):
+            return text
         return "'" + text.replace("'", "''") + "'"
     return shlex.quote(text)
 
@@ -156,6 +164,8 @@ class ShortcutManager:
                         ["powershell", "-Command", cmd],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=60,
                         cwd=shortcut.cwd,
                     )
@@ -164,6 +174,8 @@ class ShortcutManager:
                         ["/bin/bash", "-c", cmd],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=60,
                         cwd=shortcut.cwd,
                     )

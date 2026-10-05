@@ -26,6 +26,7 @@ class ToolCall:
     state: str = ""
     attempts: int = 1
     elapsed_seconds: float = 0.0
+    outcome_code: str = ""
 
 
 @dataclass
@@ -51,6 +52,7 @@ class ToolExecutionTracker:
         state: str = "",
         attempts: int = 1,
         elapsed_seconds: float = 0.0,
+        outcome_code: str = "",
     ) -> None:
         """记录一次工具调用。"""
         call = ToolCall(
@@ -62,6 +64,7 @@ class ToolExecutionTracker:
             state=state or ("succeeded" if success else "failed"),
             attempts=max(0, attempts),
             elapsed_seconds=max(0.0, elapsed_seconds),
+            outcome_code=str(outcome_code or ""),
         )
         self.calls.append(call)
         status = "成功" if success else "失败"
@@ -132,6 +135,8 @@ class ToolExecutionTracker:
                 line += f" -> {call.result_summary[:150]}"
             if call.error:
                 line += f" [错误: {call.error[:100]}]"
+            if call.outcome_code:
+                line += f" [结果: {call.outcome_code}]"
             lines.append(line)
 
         return "\n".join(lines)
@@ -148,6 +153,7 @@ class ToolExecutionTracker:
                 "state": c.state,
                 "attempts": c.attempts,
                 "elapsed_seconds": c.elapsed_seconds,
+                "outcome_code": c.outcome_code,
             }
             for c in self.calls
         ]

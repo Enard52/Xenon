@@ -32,6 +32,7 @@ from rich.theme import Theme
 
 from xenon.engine.context import AgentContext
 from xenon.engine.registry import ENGINE_REGISTRY, EngineSpec
+from xenon.engine.task_runtime import DeliveryStatus, TaskRuntime, TaskState
 from xenon.repl.commands import COMMANDS, dispatch_command
 from xenon.repl.context_manager import ContextManager
 from xenon.repl.execution_policy import (
@@ -62,6 +63,7 @@ try:
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.styles import Style
     from prompt_toolkit.formatted_text import HTML
+    from prompt_toolkit.output import DummyOutput
     from pathlib import Path as _Path
 
     _HISTORY_DIR = _Path.home() / ".xenon"
@@ -74,6 +76,7 @@ except ImportError:
     KeyBindings = None  # type: ignore
     Style = None  # type: ignore
     HTML = None  # type: ignore
+    DummyOutput = None  # type: ignore
     run_in_terminal = None  # type: ignore
 
 # ── 自定义主题 ────────────────────────────────────────────
@@ -370,6 +373,16 @@ class REPL:
                     key_bindings=kb,
                     style=style,
                     bottom_toolbar=self.status_bar.get_toolbar_fragments,
+                    # Win32Output requires an attached console.  Unit tests,
+                    # pipes and IDE terminals have no console handle; using a
+                    # dummy renderer keeps key bindings and layout available
+                    # without changing the interactive console path.
+                    output=(
+                        DummyOutput()
+                        if DummyOutput is not None
+                        and not getattr(sys.stdout, "isatty", lambda: False)()
+                        else None
+                    ),
                 )
                 self._install_input_lower_rule()
             except Exception:
@@ -1847,6 +1860,17 @@ class REPL:
         # optimizer's generated wording or by the selected reasoning mode.
         intent, inherited_intent_source = self._resolve_turn_intent(user_input)
         execution_policy = classify_execution_policy(user_input, intent=intent)
+        # Create one immutable contract for this turn.  Downstream engines and
+        # tools will consume ``agent_context.runtime`` instead of classifying
+        # the raw prompt independently.  ``replace=True`` is only used at the
+        # REPL turn boundary; a running engine cannot replace its runtime.
+        task_runtime = TaskRuntime.from_user_input(
+            user_input,
+            intent=intent,
+            policy=execution_policy,
+        )
+        self.agent_context.bind_runtime(task_runtime, replace=True)
+        task_runtime.transition(TaskState.ROUTING, reason="turn_intake_complete")
         self.agent_context.update(
             {
                 "_execution_level": int(execution_policy.level),
@@ -2150,10 +2174,15 @@ class REPL:
            （通用语言结构判断，不枚举天气/高铁/酒店等具体领域）
         5. 其他 → direct 模式（纯对话/解释/闲聊）
         """
-        policy = execution_policy or classify_execution_policy(
-            user_input,
-            intent=intent,
-        )
+        task_runtime = self.agent_context.get_runtime()
+        policy = execution_policy
+        if policy is None and task_runtime is not None:
+            # The turn contract is authoritative after intake. Reclassifying
+            # the raw prompt here used to let routing drift from the tools and
+            # evidence gates later in the same turn.
+            policy = task_runtime.execution_policy
+        if policy is None:
+            policy = classify_execution_policy(user_input, intent=intent)
         self.agent_context.update(
             {
                 "_execution_level": int(policy.level),
@@ -2247,7 +2276,14 @@ class REPL:
                 if not response_text or not response_text.strip():
                     raise RuntimeError(f"模型 {model_id} 返回空响应")
 
-                if response_text:
+                # A bound answer-only contract means the response is content,
+                # not an execution claim.  Do not scan ordinary prose for
+                # tool JSON, file verbs, or refusal words in that mode; those
+                # post-hoc keyword checks were the source of false failures.
+                if response_text and not (
+                    task_runtime is not None
+                    and task_runtime.contract.locked_answer_only
+                ):
                     # ── 响应后验证 1：检测 LLM 直接输出工具调用协议 ──
                     # v0.6.1: direct 模式不传工具定义，但 LLM 训练数据中常含
                     # {"tool": "list_files", ...} 格式。检测到后自动切 ReAct。
@@ -2371,6 +2407,12 @@ class REPL:
                 # 验证完成后再持久化和渲染，避免把 DSML/JSON 伪工具调用
                 # 短暂显示给用户后才切 ReAct。
                 self.ctx_mgr.add_assistant_message(response_text, model_used=model_id)
+                if task_runtime is not None and task_runtime.state is TaskState.ROUTING:
+                    task_runtime.transition(TaskState.DELIVERING, reason="direct_result")
+                    task_runtime.deliver(
+                        DeliveryStatus.DELIVERED,
+                        reason="direct_completed",
+                    )
                 self._render_assistant_text(response_text, model_id=model_id)
                 return
             except Exception as e:
@@ -2396,6 +2438,14 @@ class REPL:
                 console.print(f"[dim yellow]模型 {model_id} {state}: {e}[/dim yellow]")
 
         error_message = f"[错误] 所有模型均调用失败: {last_error}"
+        if task_runtime is not None and task_runtime.state in {
+            TaskState.ROUTING,
+            TaskState.EXECUTING,
+            TaskState.RECOVERING,
+            TaskState.VERIFYING,
+            TaskState.DELIVERING,
+        }:
+            task_runtime.transition(TaskState.FAILED, reason="direct_exception")
         console.print(f"[error]❌ 所有模型均调用失败: {last_error}[/error]")
         # The request message was already persisted before direct execution.
         # Always close the turn after every model fails; otherwise the next
@@ -2514,6 +2564,14 @@ class REPL:
 
         try:
             root = self.project_ctx.root or self.project_ctx.working_dir or Path.cwd()
+            task_context = getattr(self, "agent_context", None)
+            task_runtime = (
+                task_context.get_runtime()
+                if task_context is not None
+                else None
+            )
+            if task_runtime is not None:
+                task_runtime.bind_workspace_root(root)
             bind_tool_runtime(engine, ToolRuntime(workspace_root=Path(root)))
         except Exception as exc:  # noqa: BLE001 — never block a task on binding
             # A missing/renamed directory must not make the task unrunnable;
@@ -2561,6 +2619,9 @@ class REPL:
             )
         except Exception as exc:  # noqa: BLE001 — 证据记录失败不阻断主流程
             logger.debug("任务证据记录失败（不影响执行）: %s", exc)
+        task_runtime = self.agent_context.get_runtime()
+        if task_runtime is not None and task_runtime.state is TaskState.ROUTING:
+            task_runtime.transition(TaskState.EXECUTING, reason=f"engine:{spec.name}")
         # Mid-task steering：任务运行期间启动输入监听线程，用户补充/修改
         # 要求通过 engine.steer() 注入，引擎在下一个迭代检查点消费并让
         # LLM 自行判断如何调整后续步骤（不打断当前工具调用）。
@@ -2569,6 +2630,24 @@ class REPL:
             result = engine.run(
                 user_input, context=self.agent_context, ctx_mgr=self.ctx_mgr
             )
+            if task_runtime is not None and task_runtime.state in {
+                TaskState.ROUTING,
+                TaskState.EXECUTING,
+                TaskState.RECOVERING,
+                TaskState.VERIFYING,
+            }:
+                unresolved_recovery = task_runtime.state is TaskState.RECOVERING
+                task_runtime.begin_delivery(reason="engine_result")
+                task_runtime.deliver(
+                    DeliveryStatus.DELIVERED_WITH_WARNINGS
+                    if unresolved_recovery
+                    else DeliveryStatus.DELIVERED,
+                    reason=(
+                        "engine_completed_with_recovery_warning"
+                        if unresolved_recovery
+                        else "engine_completed"
+                    ),
+                )
             if spec.log_result_diagnostics:
                 # 诊断日志 — 记录结果实际值，用于排查空白面板根因。
                 logger.info(
@@ -2586,6 +2665,14 @@ class REPL:
             if model_used:
                 self.auto_router.record_model_success(model_used)
         except Exception as e:
+            if task_runtime is not None and task_runtime.state in {
+                TaskState.ROUTING,
+                TaskState.EXECUTING,
+                TaskState.RECOVERING,
+                TaskState.VERIFYING,
+                TaskState.DELIVERING,
+            }:
+                task_runtime.transition(TaskState.FAILED, reason="engine_exception")
             self._captured_log = self._stop_log_capture()
             if spec.preserve_thinking_panel:
                 # 异常退出时也保留面板。缺了这步，重试/LLM 报错后 Ctrl+O 只有
@@ -3480,6 +3567,7 @@ class REPL:
             f"{action} · ID: {receipt.record.id}",
             f"范围: {receipt.record.scope.value} · 类型: {receipt.record.kind.value}",
             f"位置: {receipt.destination}",
+            f"文件名: {Path(receipt.destination).name}",
             f"内容: {receipt.record.content}",
             f"撤销: /memory archive {receipt.record.id}",
         ]

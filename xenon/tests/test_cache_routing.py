@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from xenon.repl.auto_router import AutoRouter
 from xenon.repl.difficulty_estimator import TaskProfile
@@ -188,7 +189,8 @@ def test_affinity_setting_is_private_persistent_and_reversible(tmp_path) -> None
     tracker.close()
 
     assert settings_path is not None
-    assert settings_path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert settings_path.stat().st_mode & 0o777 == 0o600
     assert json.loads(settings_path.read_text(encoding="utf-8")) == {
         "cache_affinity_enabled": False,
         "schema_version": 2,

@@ -220,7 +220,8 @@ def test_event_store_is_bounded_and_contains_no_prompts(tmp_path) -> None:
 
     assert len(store.load()) == 10
     assert "do-not-persist-this" not in store.path.read_text(encoding="utf-8")
-    assert store.path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert store.path.stat().st_mode & 0o777 == 0o600
 
 
 def test_persistent_hmac_keeps_family_stable_across_processes(tmp_path) -> None:
@@ -239,16 +240,21 @@ print(manifest.cache_family)
     first = subprocess.check_output(
         [sys.executable, "-c", script, str(tmp_path)],
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=environment,
     ).strip()
     second = subprocess.check_output(
         [sys.executable, "-c", script, str(tmp_path)],
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=environment,
     ).strip()
 
     assert first == second
-    assert (tmp_path / "telemetry.key").stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert (tmp_path / "telemetry.key").stat().st_mode & 0o777 == 0o600
 
 
 def test_tracker_distinguishes_missing_fields_from_explicit_zero() -> None:

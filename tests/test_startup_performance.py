@@ -102,7 +102,7 @@ def test_cached_startup_is_fast(mock_fetch, temp_cache_dir, mock_credentials):
     assert warm_start_time < 0.1, f"缓存启动耗时 {warm_start_time:.3f}s，应该 <0.1s"
 
     # 热启动应该比冷启动快至少 5 倍
-    speedup = cold_start_time / warm_start_time
+    speedup = cold_start_time / max(warm_start_time, 1e-9)
     assert speedup > 5, f"提速比 {speedup:.1f}x，应该 >5x"
 
 

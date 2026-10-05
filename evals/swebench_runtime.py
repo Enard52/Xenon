@@ -53,6 +53,8 @@ def _apply_test_patch(worktree: Path, test_patch: str, instance_id: str) -> None
             ["git", "-C", str(worktree), "apply", "--whitespace=fix", str(patch_file)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
         )
         if apply.returncode != 0:
@@ -62,6 +64,8 @@ def _apply_test_patch(worktree: Path, test_patch: str, instance_id: str) -> None
                 ["patch", "-p1", "-d", str(worktree), "-i", str(patch_file)],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=60,
             )
             if fallback.returncode != 0:
@@ -77,6 +81,8 @@ def _apply_test_patch(worktree: Path, test_patch: str, instance_id: str) -> None
         ["git", "-C", str(worktree), "diff", "--name-only", "HEAD"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
     )
     for rel in touched.stdout.splitlines():
@@ -88,12 +94,16 @@ def _apply_test_patch(worktree: Path, test_patch: str, instance_id: str) -> None
         ["git", "-C", str(worktree), "add", "-A"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
     )
     subprocess.run(
         ["git", "-C", str(worktree), "commit", "-q", "-m", "apply test_patch (eval)"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
     )
 
@@ -302,7 +312,12 @@ def create_official_runtime(
         name=name,
         # Match the host worktree owner so git and files created through
         # docker exec remain usable on both sides of the bind mount.
-        user=f"{os.getuid()}:{os.getgid()}",
+        # Docker accepts a numeric uid/gid on POSIX; Windows has no getuid.
+        user=(
+            f"{os.getuid()}:{os.getgid()}"
+            if hasattr(os, "getuid") and hasattr(os, "getgid")
+            else None
+        ),
         detach=True,
         command="tail -f /dev/null",
         platform=spec.platform,

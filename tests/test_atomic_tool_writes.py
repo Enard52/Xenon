@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+import os
 
 from xenon.engine.context import AgentContext
 from xenon.nodes.tool_node import ToolNode
@@ -18,7 +19,8 @@ def test_atomic_write_preserves_mode_and_creates_exact_backup(tmp_path):
 
     assert target.read_text() == "new\n"
     assert (tmp_path / "script.sh.bak").read_text() == "old\n"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o754
+    if os.name != "nt":
+        assert stat.S_IMODE(target.stat().st_mode) == 0o754
 
 
 def test_write_file_failure_keeps_original(monkeypatch, tmp_path):

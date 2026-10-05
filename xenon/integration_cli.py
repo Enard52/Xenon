@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import shutil
 import stat
@@ -794,7 +795,7 @@ def _doctor_mcp(context: IntegrationContext) -> dict[str, Any]:
                 available = shutil.which(command) is not None
             if not available:
                 warnings.append(f"{label}: command 当前不可用: {command}")
-    if context.credentials_path.exists():
+    if context.credentials_path.exists() and os.name != "nt":
         mode = stat.S_IMODE(context.credentials_path.stat().st_mode)
         if mode & 0o077:
             errors.append(

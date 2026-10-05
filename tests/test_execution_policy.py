@@ -10,6 +10,7 @@ from xenon.engine.react_engine import ReActEngine
 from xenon.engine.context import AgentContext
 from xenon.engine.tool_tracker import ToolExecutionTracker
 from xenon.nodes.tool_executor import ToolExecutor, execution_policy_denial
+from xenon.nodes.tool_registry import required_capabilities
 from xenon.repl.code_response import validate_code_response
 from xenon.repl.difficulty_estimator import DifficultyEstimator
 from xenon.repl.execution_policy import (
@@ -82,6 +83,13 @@ def test_chat_only_constraint_wins_over_execute_words():
     assert policy.level is ExecutionLevel.ANSWER_ONLY
     assert policy.explicit_no_write is True
     assert policy.explicit_no_execute is True
+
+
+def test_reply_area_is_treated_as_chat_only_boundary():
+    policy = classify_execution_policy("只在回复区域输出代码", intent=None)
+
+    assert policy.level is ExecutionLevel.ANSWER_ONLY
+    assert policy.locks_answer_only is True
 
 
 def test_research_request_uses_final_request_clause_not_background_plan():
@@ -246,6 +254,12 @@ def test_tool_boundary_is_enforced_below_the_router(
     assert (reason is not None) is blocked
 
 
+def test_tool_registry_exposes_capability_requirements():
+    assert required_capabilities("read_file") == frozenset({"workspace_read"})
+    assert required_capabilities("write_file") == frozenset({"workspace_write"})
+    assert required_capabilities("command") == frozenset({"process_execute"})
+
+
 def test_tool_executor_blocks_write_before_toolnode(monkeypatch):
     executed: list[str] = []
 
@@ -268,6 +282,27 @@ def test_tool_executor_blocks_write_before_toolnode(monkeypatch):
     assert result.success is False
     assert "本轮执行策略" in result.observation
     assert executed == []
+
+
+def test_write_policy_command_denial_is_recoverable_and_suggests_write_tool():
+    context = AgentContext({"_execution_level": int(ExecutionLevel.WRITE)})
+    tracker = ToolExecutionTracker()
+    result = ToolExecutor().execute(
+        "command",
+        {"action": "Set-Content hello.py 'print(1)'"},
+        context,
+        tracker,
+        tools={"command": {"name": "command"}},
+    )
+
+    assert result.success is False
+    assert result.outcome_code == "policy_denied"
+    observation = result.format_observation()
+    assert "write_file" in observation
+    assert "无需重新授权" in observation
+    assert result.structured is not None
+    assert result.structured.outcome_code == "policy_denied"
+    assert tracker.calls[-1].outcome_code == "policy_denied"
 
 
 def test_read_only_research_hides_and_blocks_clone_repo(monkeypatch):

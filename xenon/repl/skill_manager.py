@@ -743,6 +743,8 @@ class SkillManager:
                     ["powershell", "-Command", cmd],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=60,
                 )
             else:
@@ -750,6 +752,8 @@ class SkillManager:
                     ["/bin/bash", "-c", cmd],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=60,
                 )
             output = proc.stdout.strip()

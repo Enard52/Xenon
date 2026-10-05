@@ -373,6 +373,10 @@ def test_issue_and_pull_urls_fetch_discussion(monkeypatch, url, endpoint, action
 
 def test_clone_detects_default_branch_and_keeps_token_out_of_url(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(tool_module.Path, "home", staticmethod(lambda: tmp_path))
+    # The clone helper uses a relative checkout name; isolate it from any
+    # user-owned ``trunk/`` directory in the repository workspace.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GH_TOKEN", "clone-token")
     calls = []
 

@@ -36,8 +36,23 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
+def _home_dir() -> Path:
+    """Resolve a usable home directory even in stripped CI environments."""
+    try:
+        return Path.home()
+    except RuntimeError:
+        for key in ("HOME", "USERPROFILE"):
+            value = os.environ.get(key)
+            if value:
+                return Path(value)
+        drive, tail = os.environ.get("HOMEDRIVE"), os.environ.get("HOMEPATH")
+        if drive and tail:
+            return Path(drive + tail)
+        return Path.cwd()
+
 # 默认配置路径
-_DEFAULT_CONFIG_PATH = Path.home() / ".xenon" / "config.yaml"
+_DEFAULT_CONFIG_PATH = _home_dir() / ".xenon" / "config.yaml"
 CONFIG_PATH = Path(
     os.environ.get("XENON_CONFIG_PATH", str(_DEFAULT_CONFIG_PATH)),
 ).expanduser()
@@ -86,7 +101,7 @@ class PathsConfig:
     """路径配置。"""
 
     # XENON_CREDENTIALS_PATH: 凭证文件路径
-    credentials: str = str(Path.home() / ".xenon" / "credentials.yaml")
+    credentials: str = str(_home_dir() / ".xenon" / "credentials.yaml")
     # XENON_CACHE_DIR: 缓存目录（主要用于测试）
     cache: str = ""
     # XENON_PROJECT_ROOT: 项目根目录
@@ -354,7 +369,7 @@ def _merge_config(file_data: dict[str, Any]) -> SystemConfig:
     development_data = _section(file_data, "development")
     intent_classifier_data = _section(file_data, "intent_classifier")
 
-    default_credentials = str(Path.home() / ".xenon" / "credentials.yaml")
+    default_credentials = str(_home_dir() / ".xenon" / "credentials.yaml")
 
     validation = ValidationConfig(
         strict=_get_bool_env(

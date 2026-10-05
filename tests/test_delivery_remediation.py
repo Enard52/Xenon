@@ -9,6 +9,8 @@ v0.8.2 起：ReAct 增加第三纠偏循环（交付闸门预检 → 注入补�
 
 from __future__ import annotations
 
+import json
+
 from xenon.engine.context import AgentContext
 from xenon.engine.react_engine import ReActEngine
 
@@ -50,29 +52,38 @@ class TestReActDeliveryRemediation:
             calls["n"] += 1
             if calls["n"] == 1:
                 # 先写 a.py（有工具执行，避免触发 no_tool_streak）
-                return (
-                    '{"thought": "先写 a", "action": "write_file", '
-                    '"action_input": {"file_path": "'
-                    + str(tmp_path / "a.py")
-                    + '", "content": "a = 1"}}'
+                return json.dumps(
+                    {
+                        "thought": "先写 a",
+                        "action": "write_file",
+                        "action_input": {
+                            "file_path": str(tmp_path / "a.py"),
+                            "content": "a = 1",
+                        },
+                    },
+                    ensure_ascii=False,
                 )
             if calls["n"] == 2:
                 # 声称创建了 x.py，但从未写过它 → 交付闸门应拦截
-                return (
-                    '{"thought": "完成了", "final_answer": "已创建 '
-                    + str(target)
-                    + '"}'
+                return json.dumps(
+                    {"thought": "完成了", "final_answer": f"已创建 {target}"},
+                    ensure_ascii=False,
                 )
             # 第三轮起：补救提示应已注入
             joined = str(messages)
             if "不要只输出 diff" in joined:
                 remediated["seen"] = True
             # 补救后真正写 x.py
-            return (
-                '{"thought": "落盘", "action": "write_file", '
-                '"action_input": {"file_path": "'
-                + str(target)
-                + '", "content": "x = 1"}}'
+            return json.dumps(
+                {
+                    "thought": "落盘",
+                    "action": "write_file",
+                    "action_input": {
+                        "file_path": str(target),
+                        "content": "x = 1",
+                    },
+                },
+                ensure_ascii=False,
             )
 
         monkeypatch.setattr(engine, "_call_llm_for_phase", fake_call)
@@ -130,16 +141,30 @@ class TestVerificationLoop:
             model_priority=["deepseek/deepseek-v4-flash"],
             max_steps=10,
         )
-        plan = (
-            '{"analysis": "计划", "steps": ['
-            '{"id": 1, "task": "修改代码", "tool": "write_file", '
-            '"params": {"file_path": "'
-            + str(tmp_path / "x.py")
-            + '", "content": "def f(): return 1"}}, '
-            '{"id": 2, "task": "运行测试", "tool": "command", '
-            '"params": {"command": "python -m pytest '
-            + str(tmp_path / "test_x.py")
-            + '"}}]}'
+        plan = json.dumps(
+            {
+                "analysis": "计划",
+                "steps": [
+                    {
+                        "id": 1,
+                        "task": "修改代码",
+                        "tool": "write_file",
+                        "params": {
+                            "file_path": str(tmp_path / "x.py"),
+                            "content": "def f(): return 1",
+                        },
+                    },
+                    {
+                        "id": 2,
+                        "task": "运行测试",
+                        "tool": "command",
+                        "params": {
+                            "command": f"python -m pytest {tmp_path / 'test_x.py'}"
+                        },
+                    },
+                ],
+            },
+            ensure_ascii=False,
         )
         repair_seen = {"called": False}
 

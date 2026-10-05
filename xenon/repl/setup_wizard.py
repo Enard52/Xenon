@@ -134,13 +134,56 @@ def _masked_input(prompt_text: str) -> str:
 
     import msvcrt
 
+    def _discard_windows_escape() -> None:
+        """Consume one CSI/SS3 sequence without treating it as key content.
+
+        Windows Terminal can leave bracketed-paste markers enabled when a
+        prompt-toolkit session calls into the Rich wizard.  In that case a
+        paste arrives as ``ESC [ 200~ ... ESC [ 201~``.  The old Windows path
+        handled ESC as "clear the line" and then appended the marker bytes to
+        the credential.  Besides corrupting the key, this made the visible
+        feedback look inconsistent with what was actually submitted.
+        """
+        kbhit = getattr(msvcrt, "kbhit", None)
+        if not callable(kbhit):
+            return
+        # The first byte after ESC is normally already buffered for a CSI
+        # sequence.  Do not block here: a standalone Escape should still act
+        # as "clear" below.
+        if not kbhit():
+            return
+        for _ in range(64):
+            if not kbhit():
+                return
+            tail = msvcrt.getwch()
+            if tail == "~" or tail.isalpha():
+                return
+
+    def _discard_pasted_lf() -> None:
+        """Remove the LF paired with a pasted CRLF, if it is already queued.
+
+        ``getwch`` returns the CR first.  Leaving the following LF in the
+        console input buffer causes the next Rich ``Confirm.ask`` to accept
+        its default immediately, which looked like the wizard ignored the
+        user's answer after a pasted key.
+        """
+        kbhit = getattr(msvcrt, "kbhit", None)
+        if callable(kbhit) and kbhit():
+            if msvcrt.getwch() != "\n":
+                # A character typed concurrently after Enter is intentionally
+                # ignored; line submission has already completed.
+                return
+
     sys.stdout.write(f"{prompt_text}: ")
     sys.stdout.flush()
     chars: list[str] = []
     while True:
         ch = msvcrt.getwch()
         if ch in ("\r", "\n"):
-            # 粘贴多行时，\r\n 中的 \n 会作为第二次回车 → 直接结束
+            # 粘贴多行时，\r\n 中的 \n 会作为第二次回车。消费掉配对的
+            # LF，避免它泄漏给后续菜单/Confirm 输入。
+            if ch == "\r":
+                _discard_pasted_lf()
             sys.stdout.write("\n")
             sys.stdout.flush()
             break
@@ -151,11 +194,19 @@ def _masked_input(prompt_text: str) -> str:
                 chars.pop()
                 sys.stdout.write("\b \b")
                 sys.stdout.flush()
-        elif ch == "\x1b":  # Escape — 清空
-            for _ in chars:
-                sys.stdout.write("\b \b")
-            chars.clear()
-            sys.stdout.flush()
+        elif ch == "\x1b":  # Escape / CSI — 清空或丢弃控制序列
+            if getattr(msvcrt, "kbhit", lambda: False)():
+                _discard_windows_escape()
+            else:
+                for _ in chars:
+                    sys.stdout.write("\b \b")
+                chars.clear()
+                sys.stdout.flush()
+        elif ch in ("\x00", "\xe0"):
+            # Windows console encodes function/arrow keys as a prefix plus a
+            # scan-code byte.  Neither byte belongs in an API key.
+            if getattr(msvcrt, "kbhit", lambda: False)():
+                msvcrt.getwch()
         else:
             chars.append(ch)
             sys.stdout.write("*")
@@ -172,6 +223,10 @@ def _clean_api_key(raw: str) -> str:
     if not raw or not raw.strip():
         return ""
     first_line = raw.strip().splitlines()[0].strip()
+    # Defensive cleanup for terminals that leak bracketed-paste markers into
+    # the input stream.  The Windows reader consumes them directly, but this
+    # keeps keys pasted through other wrappers from being silently corrupted.
+    first_line = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", first_line)
     # 剥离 (export )?VAR= 前缀
     first_line = re.sub(r"^(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*", "", first_line)
     return first_line.strip().strip("'\"").strip()
@@ -296,11 +351,12 @@ def _setup_api_key(model_pool=None) -> None:
 
     api_key = _clean_api_key(
         _masked_input(
-            f"请输入 {provider.name} 的 API Key（可粘贴，输入会显示，回车确认）"
+            f"请输入 {provider.name} 的 API Key（可粘贴，输入以 * 显示，回车确认）"
         )
     )
 
     if api_key:
+        console.print(f"[dim]已接收 API Key（{len(api_key)} 个字符），正在测试连通性…[/dim]")
         # P3-Q6 / §8.16.1：保存前连通性测试，失败时询问是否仍保存。
         ok, detail = _test_key_connectivity(provider, api_key)
         if ok:
@@ -590,7 +646,7 @@ def _register_custom(registry=None, model_pool=None) -> None:
         default="https://api.example.com/v1",
     )
 
-    console.print("[dim]（输入 API Key，会显示输入，回车确认）[/dim]")
+    console.print("[dim]（输入 API Key，以 * 显示，回车确认）[/dim]")
     api_key = _clean_api_key(_masked_input(f"请输入 {name} 的 API Key"))
 
     if not api_key:

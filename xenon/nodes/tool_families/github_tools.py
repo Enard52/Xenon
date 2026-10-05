@@ -560,6 +560,8 @@ class GitHubToolsMixin:
                     ],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self.timeout,
                     env=git_env,
                 )
@@ -612,6 +614,8 @@ class GitHubToolsMixin:
                     ],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self.timeout,
                     env=git_env,
                 )
@@ -627,6 +631,8 @@ class GitHubToolsMixin:
                         ],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=self.timeout,
                         env=git_env,
                     )
@@ -727,6 +733,8 @@ class GitHubToolsMixin:
                 ["git", "ls-remote", "--symref", clone_url, "HEAD"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
                 env=self._git_auth_env(),
             )

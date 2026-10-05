@@ -256,6 +256,8 @@ def _get_weather_via_curl(
             ["curl", "-s", "--max-time", "15", url],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=20,
         )
         if proc.returncode != 0:

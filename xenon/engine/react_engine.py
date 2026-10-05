@@ -27,7 +27,7 @@ from xenon.nodes.tool_executor import (
     execution_policy_denial,
     required_execution_level,
 )
-from xenon.nodes.tool_registry import BUILTIN_TOOL_REGISTRY
+from xenon.nodes.tool_registry import BUILTIN_TOOL_REGISTRY, required_capabilities
 from xenon.utils.response_adapter import parse_react
 
 if TYPE_CHECKING:
@@ -400,13 +400,19 @@ class ReActEngine(BaseEngine):
         self._recent_calls.clear()  # v0.7.0: 每次 run 重置重复调用跟踪
         self._verification_active = False  # v0.8.3: 每次 run 重置验证循环状态
         self._loop_detector.reset()  # v0.9.0: 每次 run 重置循环检测器
-        active_level = ctx.get("_execution_level")
+        task_runtime = ctx.get_runtime()
+        active_level = (
+            task_runtime.contract.policy_level
+            if task_runtime is not None
+            else ctx.get("_execution_level")
+        )
         original_user_input = user_input
         if active_level is not None:
             from xenon.repl.execution_policy import bind_execution_boundary
 
             user_input = bind_execution_boundary(user_input, int(active_level))
         self._active_execution_level = active_level
+        self._active_runtime = task_runtime
         messages = [{"role": "system", "content": self.system_prompt}]
         # F4: ctx_mgr 注入时消费其（已压缩）消息，不再自行 [-10:] 截断；
         # 否则回退 AgentContext 的对话历史（保留 [-10:] 兜底）。
@@ -435,21 +441,28 @@ class ReActEngine(BaseEngine):
             )
 
         # 判断输入是否需要工具操作
-        requires_tools = self._input_requires_tools(user_input)
+        # Once a TaskRuntime is bound, routing derives from its immutable
+        # contract.  Reclassifying the raw prompt here used to let a later
+        # engine decision contradict the REPL's turn policy.
+        requires_tools = (
+            task_runtime.contract.policy_level >= 1
+            if task_runtime is not None
+            else self._input_requires_tools(user_input)
+        )
         from xenon.repl.prompt_optimizer import detect_intent
 
-        intent = detect_intent(user_input)
+        intent = (
+            task_runtime.contract.intent
+            if task_runtime is not None
+            else detect_intent(user_input)
+        )
         from xenon.repl.execution_policy import (
             ExecutionLevel,
             classify_execution_policy,
         )
 
-        policy_level = (
-            int(active_level)
-            if active_level is not None
-            else int(
-                classify_execution_policy(original_user_input, intent=intent).level
-            )
+        policy_level = int(active_level) if active_level is not None else int(
+            classify_execution_policy(original_user_input, intent=intent).level
         )
         requires_mutation = policy_level >= int(ExecutionLevel.WRITE)
         strategy = get_strategy_advice(intent, frozenset(self.tools), user_input)
@@ -731,20 +744,29 @@ class ReActEngine(BaseEngine):
 
                 # 首次进入时重置，后续由主循环自然迭代驱动
                 if not getattr(self, "_verification_enabled", True):
+                    runtime = ctx.get_runtime()
                     evidence = ExecutionEvidence.capture(
-                        tracker, workspace_root_for(self)
+                        tracker,
+                        workspace_root_for(self),
+                        baseline=getattr(runtime, "workspace_baseline", None),
                     )
                 elif not getattr(self, "_verification_active", False):
                     self.verification_loop.reset()
                     self.verification_loop._active = True
                     self._verification_active = True
+                    runtime = ctx.get_runtime()
                     evidence = ExecutionEvidence.capture(
-                        tracker, workspace_root_for(self)
+                        tracker,
+                        workspace_root_for(self),
+                        baseline=getattr(runtime, "workspace_baseline", None),
                     )
                 else:
                     # 非首次：记录上一轮修复结果后再继续
+                    runtime = ctx.get_runtime()
                     evidence = ExecutionEvidence.capture(
-                        tracker, workspace_root_for(self)
+                        tracker,
+                        workspace_root_for(self),
+                        baseline=getattr(runtime, "workspace_baseline", None),
                     )
                     outcome_tag = (
                         "fixed" if evidence.successful_tests else "still_failing"
@@ -757,7 +779,9 @@ class ReActEngine(BaseEngine):
                     self.callback.on_finish(answer)
                     return answer
 
-                repair_prompt = self.verification_loop.feed(evidence, user_input)
+                repair_prompt = self.verification_loop.feed(
+                    evidence, user_input, context=ctx
+                )
                 if repair_prompt is None:
                     # 无修复提示（已验证通过/无失败测试），直接交付
                     self.finalize_evidence(context=ctx, output=answer, tracker=tracker)
@@ -1264,6 +1288,12 @@ class ReActEngine(BaseEngine):
                 t["name"], {}
             ) > int(active_level):
                 continue
+            runtime = getattr(self, "_active_runtime", None)
+            if runtime is not None and any(
+                not runtime.allows(capability)
+                for capability in required_capabilities(t["name"])
+            ):
+                continue
             params = t.get("params", {}) or {}
             properties = {
                 pname: {"type": "string", "description": str(pdesc)}
@@ -1325,6 +1355,14 @@ class ReActEngine(BaseEngine):
         if action in {"spawn_agent", "create_skill", "list_skills"}:
             policy_reason = execution_policy_denial(action, action_input, context)
             if policy_reason:
+                runtime = context.get_runtime() if context is not None else None
+                if runtime is not None:
+                    runtime.record_tool_outcome(
+                        action,
+                        "policy_denied",
+                        state="failed",
+                        error=policy_reason,
+                    )
                 if tracker:
                     tracker.record(
                         action,
@@ -1332,16 +1370,53 @@ class ReActEngine(BaseEngine):
                         False,
                         policy_reason,
                         error=policy_reason,
+                        outcome_code="policy_denied",
                     )
                 return f"⛔ {policy_reason}"
 
         if action == "spawn_agent":
-            return self._spawn_subagent(action_input, context, tracker)
+            result = self._spawn_subagent(action_input, context, tracker)
+            runtime = context.get_runtime() if context is not None else None
+            if runtime is not None:
+                success = not str(result).lstrip().startswith(("执行失败", "❌"))
+                runtime.record_tool_outcome(
+                    action,
+                    "success" if success else "tool_failed",
+                    success=success,
+                    tool_class="SENSITIVE",
+                    state="succeeded" if success else "failed",
+                    error="" if success else str(result)[:300],
+                )
+            return result
         # v0.5.4: skill 管理工具 — 直接在引擎内处理，不走 ToolNode
         if action == "create_skill":
-            return self._create_skill_tool(action_input)
+            result = self._create_skill_tool(action_input)
+            runtime = context.get_runtime() if context is not None else None
+            if runtime is not None:
+                success = not str(result).lstrip().startswith(("执行失败", "❌"))
+                runtime.record_tool_outcome(
+                    action,
+                    "success" if success else "tool_failed",
+                    success=success,
+                    tool_class="WRITE",
+                    state="succeeded" if success else "failed",
+                    error="" if success else str(result)[:300],
+                )
+            return result
         if action == "list_skills":
-            return self._list_skills_tool()
+            result = self._list_skills_tool()
+            runtime = context.get_runtime() if context is not None else None
+            if runtime is not None:
+                success = not str(result).lstrip().startswith("❌")
+                runtime.record_tool_outcome(
+                    action,
+                    "success" if success else "tool_failed",
+                    success=success,
+                    tool_class="INFO",
+                    state="succeeded" if success else "failed",
+                    error="" if success else str(result)[:300],
+                )
+            return result
         result = self._tool_executor.execute(
             action,
             action_input,
@@ -1413,15 +1488,18 @@ class ReActEngine(BaseEngine):
         # 隔离 ctx：复制对话消息作历史兜底
         sub_ctx = AgentContext()
         sub_ctx.set_conversation_messages(list(context.get_conversation_messages()))
+        runtime = context.get_runtime()
+        if runtime is not None:
+            sub_ctx.bind_runtime(runtime)
 
         # P1 安全：继承父 Agent 的执行权限级别
         # 防止权限提升：父 Agent 只有只读权限时，子 Agent 不应该能执行写操作
         execution_level = context.get("_execution_level")
         if execution_level is not None:
-            sub_ctx["_execution_level"] = execution_level
+            sub_ctx.set("_execution_level", execution_level)
         execution_reason = context.get("_execution_reason")
         if execution_reason is not None:
-            sub_ctx["_execution_reason"] = execution_reason
+            sub_ctx.set("_execution_reason", execution_reason)
 
         # 超时控制：在线程池中执行 sub.run()
         if timeout and timeout > 0:
@@ -1512,14 +1590,17 @@ class ReActEngine(BaseEngine):
 
             sub_ctx = AgentContext()
             sub_ctx.set_conversation_messages(list(context.get_conversation_messages()))
+            runtime = context.get_runtime()
+            if runtime is not None:
+                sub_ctx.bind_runtime(runtime)
 
             # P1 安全：继承父 Agent 的执行权限级别（批量并行任务）
             execution_level = context.get("_execution_level")
             if execution_level is not None:
-                sub_ctx["_execution_level"] = execution_level
+                sub_ctx.set("_execution_level", execution_level)
             execution_reason = context.get("_execution_reason")
             if execution_reason is not None:
-                sub_ctx["_execution_reason"] = execution_reason
+                sub_ctx.set("_execution_reason", execution_reason)
 
             try:
                 if timeout and timeout > 0:

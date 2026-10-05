@@ -90,12 +90,17 @@ class EvidenceGate(ABC):
 
 
 # ── 纯校验函数（从 PlanExecuteEngine 提取，单一真相源）───────
-def task_requires_write(user_input: str) -> bool:
+def task_requires_write(user_input: str = "", *, context: Any = None) -> bool:
     """判断任务是否需要写操作（基于执行级别，非领域关键词枚举）。
 
     WRITE(2)/EXECUTE(3) 级别意味着用户要求文件变更或命令执行；
     ANSWER_ONLY(0)/READ_ONLY(1) 级别不需要落盘。
     """
+    # A bound TaskRuntime is authoritative.  The raw-prompt classifier is
+    # retained only for standalone legacy callers and old persisted workflows.
+    runtime = context.get_runtime() if context is not None else None
+    if runtime is not None:
+        return runtime.contract.output_mode in {"workspace_change", "tested_change"}
     try:
         from xenon.repl.execution_policy import (
             ExecutionLevel,
@@ -117,7 +122,12 @@ def plan_has_write_step(steps: list[dict[str, Any]]) -> bool:
     )
 
 
-def has_successful_write(tracker: Any | None) -> bool:
+def has_successful_write(
+    tracker: Any | None,
+    *,
+    workspace_root: Any = None,
+    baseline: dict[str, str] | None = None,
+) -> bool:
     """是否已有任何成功的写类工具执行（文件被真正修改）。
 
     command 和 git 是歧义工具（pytest/ls 也是 command），已被排除在
@@ -125,9 +135,30 @@ def has_successful_write(tracker: Any | None) -> bool:
     """
     if tracker is None:
         return False
-    return any(
+    if any(
         call.success and call.tool_name in WRITE_TOOL_NAMES for call in tracker.calls
-    )
+    ):
+        return True
+    # ``command`` and ``git`` are intentionally ambiguous tools.  When they
+    # succeeded and a trusted workspace root is available, use the same
+    # read-only workspace snapshot as ExecutionEvidence to detect a real
+    # mutation instead of claiming that no file was written.
+    if workspace_root is not None and any(
+        call.success and call.tool_name in {"command", "git"}
+        for call in tracker.calls
+    ):
+        from xenon.engine.execution_evidence import ExecutionEvidence
+
+        if baseline:
+            evidence = ExecutionEvidence.capture(
+                tracker, workspace_root, baseline=baseline
+            )
+        else:
+            # Keep compatibility with third-party evidence capture shims that
+            # still expose the original two-argument signature.
+            evidence = ExecutionEvidence.capture(tracker, workspace_root)
+        return evidence.has_workspace_change
+    return False
 
 
 # 文件声明校验正则（从 _verify_llm_file_claims 提取）
@@ -395,7 +426,7 @@ class PlanCompletenessGate(EvidenceGate):
         if not steps:
             # 空计划由调用方另行处理（不在此 Gate 判定）
             return GateVerdict(self.phase, True, "空计划由调用方处理", "info")
-        if not task_requires_write(user_input):
+        if not task_requires_write(user_input, context=ctx):
             return GateVerdict(self.phase, True, "任务不需要写操作", "info")
         if plan_has_write_step(steps):
             return GateVerdict(self.phase, True, "计划含写工具步骤", "info")
@@ -426,9 +457,17 @@ class TaskCompletionGate(EvidenceGate):
         max_steps: int = 0,
         **kwargs: Any,
     ) -> GateVerdict:
-        if has_successful_write(tracker):
+        baseline = kwargs.get("workspace_baseline")
+        if baseline is None and ctx is not None:
+            runtime = ctx.get_runtime() if hasattr(ctx, "get_runtime") else None
+            baseline = getattr(runtime, "workspace_baseline", None)
+        if has_successful_write(
+            tracker,
+            workspace_root=kwargs.get("workspace_root"),
+            baseline=baseline,
+        ):
             return GateVerdict(self.phase, True, "已有成功写类工具执行", "info")
-        if not task_requires_write(user_input):
+        if not task_requires_write(user_input, context=ctx):
             return GateVerdict(self.phase, True, "任务不需要写操作", "info")
         if results is not None and max_steps > 0 and len(results) >= max_steps + 8:
             # v0.8.3: 从「>= max_steps 拦截」放宽为「远超 max_steps 兜底」。
@@ -465,6 +504,14 @@ class FileClaimGate(EvidenceGate):
         tracker: Any | None = None,
         **kwargs: Any,
     ) -> GateVerdict:
+        runtime = ctx.get_runtime() if ctx is not None else None
+        if runtime is not None and runtime.contract.locked_answer_only:
+            return GateVerdict(
+                self.phase,
+                True,
+                "仅回答任务不需要文件声明验证",
+                "info",
+            )
         passed, unverified = verify_file_claims(
             output,
             tracker,
@@ -507,7 +554,13 @@ class EvidenceCaptureGate(EvidenceGate):
     ) -> GateVerdict:
         from xenon.engine.execution_evidence import ExecutionEvidence
 
-        evidence = ExecutionEvidence.capture(tracker, workspace_root)
+        baseline = kwargs.get("workspace_baseline")
+        if baseline is None and ctx is not None:
+            runtime = ctx.get_runtime() if hasattr(ctx, "get_runtime") else None
+            baseline = getattr(runtime, "workspace_baseline", None)
+        evidence = ExecutionEvidence.capture(
+            tracker, workspace_root, baseline=baseline
+        )
         return GateVerdict(
             self.phase,
             True,

@@ -9,7 +9,46 @@
 提到仓库根目录后，两棵树行为一致。
 """
 
+import hashlib
+import os
+from pathlib import Path
+
 import pytest
+
+
+def pytest_collection_modifyitems(items):
+    """Keep parameterized node ids below Windows' environment limit.
+
+    Pytest stores the current node id in ``PYTEST_CURRENT_TEST``.  A fuzz test
+    intentionally uses a very large input as a parameter; on Windows that
+    value can exceed the 32 KiB environment-variable limit during teardown.
+    The full id remains available in the collection source, while the runtime
+    id uses a stable digest for reporting and environment propagation.
+    """
+    if os.name != "nt":
+        return
+    for item in items:
+        nodeid = item.nodeid
+        if len(nodeid) <= 4096:
+            continue
+        digest = hashlib.sha256(nodeid.encode("utf-8", errors="replace")).hexdigest()[:16]
+        item._nodeid = f"{nodeid.split('[', 1)[0]}[param-{digest}]"
+
+
+@pytest.fixture(autouse=True)
+def _skip_unavailable_windows_symlinks(monkeypatch):
+    """Skip symlink-specific cases when Windows Developer Mode is disabled."""
+    original = Path.symlink_to
+
+    def symlink_to(path, target, target_is_directory=False):
+        try:
+            return original(path, target, target_is_directory=target_is_directory)
+        except OSError as exc:
+            if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+                pytest.skip("Windows symlink privilege is unavailable")
+            raise
+
+    monkeypatch.setattr(Path, "symlink_to", symlink_to)
 
 # 在 conftest 加载时（最早时刻，mock 还没发生）保存 chat_completion 的真实原始引用。
 # 后续无论哪个测试怎么 mock，autouse fixture 都能恢复到这个 orig。

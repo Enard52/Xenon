@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import textwrap
 
 from xenon.engine.context import AgentContext
@@ -90,6 +91,8 @@ def test_sigkill_recovers_all_parallel_tools_without_replaying(tmp_path, monkeyp
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     try:
         assert process.stdout is not None
@@ -117,7 +120,11 @@ def test_sigkill_recovers_all_parallel_tools_without_replaying(tmp_path, monkeyp
     assert "read_file" in notice
     assert "write_file" in notice
     assert context.get("_tool_execution_active") == {}
-    assert process.returncode is not None and process.returncode < 0
+    assert process.returncode is not None
+    if sys.platform == "win32":
+        assert process.returncode != 0
+    else:
+        assert process.returncode < 0
 
 
 def test_corrupt_resume_fails_closed_without_replacing_current_state(

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import tempfile
+import os
 from pathlib import Path
 
 from xenon.repl.context_manager import ContextManager
@@ -40,7 +41,13 @@ def test_compact_persistence_failure_feedback():
     状态：✓ 已实现（持久化失败时设置_last_snapshot_error）
     """
     cm = ContextManager()
-    cm.persist_dir = Path("/proc/invalid_path_that_cannot_be_written")
+    if os.name == "nt":
+        fd, blocker_name = tempfile.mkstemp(prefix="xenon-blocker-")
+        os.close(fd)
+        blocker = Path(blocker_name)
+        cm.persist_dir = blocker
+    else:
+        cm.persist_dir = Path("/proc/invalid_path_that_cannot_be_written")
     cm.session_id = "test_session"
 
     for i in range(10):
@@ -55,6 +62,7 @@ def test_compact_persistence_failure_feedback():
     assert (
         "No such file or directory" in cm._last_snapshot_error
         or "Permission denied" in cm._last_snapshot_error
+        or "已存在" in cm._last_snapshot_error
     )
 
 

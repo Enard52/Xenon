@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import tempfile
 import stat
+import os
 from pathlib import Path
 
 from xenon.repl.memory import MemoryStore, Memory
@@ -68,7 +69,8 @@ class TestMemoryStore:
         path = tmp_path / "memory.json"
         MemoryStore(path).add("个人偏好", type="preference")
 
-        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        if os.name != "nt":
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
     def test_delete(self):
         """测试删除记忆。"""

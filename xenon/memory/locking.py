@@ -25,7 +25,10 @@ class InterProcessFileLock:
         self,
         path: Path,
         *,
-        timeout: float = 5.0,
+        # Windows process startup and antivirus scans can make one render
+        # transaction take several seconds.  A short five second limit caused
+        # false lock failures for otherwise healthy concurrent writers.
+        timeout: float = 30.0,
         poll_interval: float = 0.05,
         stale_after: float = 30.0,
     ) -> None:

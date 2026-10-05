@@ -64,6 +64,13 @@ class TestLongSessionStability:
         import os
 
         def count_fds():
+            if os.name == "nt":
+                try:
+                    import psutil
+
+                    return psutil.Process().num_handles()
+                except (ImportError, OSError):
+                    return None
             return len(os.listdir("/proc/self/fd"))
 
         fd0 = count_fds()
@@ -77,7 +84,8 @@ class TestLongSessionStability:
                 cm.compact(f"摘要 {i}")
         fd1 = count_fds()
         # 不允许句柄泄漏（允许 ±5 抖动）
-        assert fd1 - fd0 <= 5, f"fd 泄漏: {fd0} -> {fd1}"
+        if fd0 is not None and fd1 is not None:
+            assert fd1 - fd0 <= 5, f"fd 泄漏: {fd0} -> {fd1}"
         # compact 真实触发过：history 被压缩且保留摘要
         assert len(cm.history) < 120
         assert any("摘要" in m.content for m in cm.history)

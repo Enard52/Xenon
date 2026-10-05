@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-import fcntl
+import pytest
+
 import os
 from pathlib import Path
-import pty
 import re
 import select
 import shutil
 import struct
 import subprocess
 import sys
-import termios
 import time
 
-import pytest
-
+try:
+    import fcntl
+    import pty
+    import termios
+except ImportError:
+    pytest.skip("POSIX PTY ioctls are not available on Windows", allow_module_level=True)
 
 pytestmark = pytest.mark.e2e
 _REPO_ROOT = Path(__file__).resolve().parents[1]

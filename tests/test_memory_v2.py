@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import stat
+import os
 import subprocess
 import sys
 import threading
@@ -57,8 +58,9 @@ def test_project_local_write_has_json_markdown_receipt_and_private_mode(tmp_path
         json.loads(metadata.read_text(encoding="utf-8"))["items"][0]["content"]
         == receipt.record.content
     )
-    assert stat.S_IMODE(metadata.stat().st_mode) == 0o600
-    assert stat.S_IMODE(metadata.parent.stat().st_mode) == 0o700
+    if os.name != "nt":
+        assert stat.S_IMODE(metadata.stat().st_mode) == 0o600
+        assert stat.S_IMODE(metadata.parent.stat().st_mode) == 0o700
     assert "@.xenon/memory/local/INDEX.md" in (
         service.registry.project_root / "XENON.local.md"
     ).read_text(encoding="utf-8")
@@ -86,7 +88,8 @@ def test_shared_memory_is_explicit_scope_and_not_private(tmp_path):
 
     path = service.registry.project_root / ".xenon/memory/shared/conventions.md"
     assert receipt.destination == str(path)
-    assert stat.S_IMODE(path.stat().st_mode) == 0o644
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o644
     assert "@.xenon/memory/shared/INDEX.md" in (
         service.registry.project_root / "XENON.md"
     ).read_text(encoding="utf-8")
@@ -208,7 +211,8 @@ def test_user_memory_creates_transparent_global_index_pointer(tmp_path):
         encoding="utf-8"
     )
     assert receipt.destination.endswith("project.md")
-    assert stat.S_IMODE(entrypoint.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(entrypoint.stat().st_mode) == 0o600
 
 
 def test_secret_is_rejected_by_policy(tmp_path):
@@ -576,6 +580,8 @@ service.remember(f"跨进程写入的独立事实 {index.name}")
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         for index in range(6)
     ]

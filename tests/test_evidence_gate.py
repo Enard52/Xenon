@@ -22,6 +22,8 @@ from xenon.engine.evidence_gate import (
     verify_file_claims,
 )
 from xenon.engine.plan_execute_engine import PlanExecuteEngine
+from xenon.engine.task_runtime import TaskRuntime
+from xenon.repl.execution_policy import ExecutionLevel, ExecutionPolicy
 
 
 def _make_call(tool: str, params: dict, success: bool):
@@ -150,6 +152,49 @@ class TestTaskCompletionGate:
         )
         assert verdict.passed is True
 
+    def test_bound_answer_only_runtime_overrides_write_words_in_prompt(self) -> None:
+        context = AgentContext()
+        context.bind_runtime(
+            TaskRuntime.from_user_input(
+                "只在回复区域输出，不要写入文件",
+                intent="write_code",
+                policy=ExecutionPolicy(ExecutionLevel.ANSWER_ONLY, "answer only", explicit_no_write=True, explicit_no_execute=True),
+            )
+        )
+        verdict = TaskCompletionGate().check(
+            context,
+            user_input="请创建 src/main.py 并写入代码",
+            results=[],
+            tracker=_make_tracker([]),
+            max_steps=10,
+        )
+
+        assert verdict.passed is True
+        assert "不需要写操作" in verdict.reason
+
+    def test_successful_command_with_workspace_change_counts_as_write(self, monkeypatch):
+        from xenon.engine.execution_evidence import ExecutionEvidence
+
+        tracker = _make_tracker([_make_call("command", {"action": "write"}, True)])
+        monkeypatch.setattr(
+            ExecutionEvidence,
+            "capture",
+            classmethod(
+                lambda cls, tracker, workspace_root=None: types.SimpleNamespace(
+                    has_workspace_change=True
+                )
+            ),
+        )
+
+        verdict = TaskCompletionGate().check(
+            None,
+            user_input="修复这个 bug",
+            tracker=tracker,
+            workspace_root=".",
+        )
+
+        assert verdict.passed is True
+
 
 class TestFileClaimGate:
     def test_passes_clean_output(self) -> None:
@@ -183,6 +228,24 @@ class TestFileClaimGate:
             tracker=tracker,
         )
         assert verdict.passed is True
+
+    def test_answer_only_runtime_skips_file_claim_scan(self) -> None:
+        context = AgentContext()
+        context.bind_runtime(
+            TaskRuntime.from_user_input(
+                "只在回复区域输出代码",
+                intent="write_code",
+                policy=ExecutionPolicy(ExecutionLevel.ANSWER_ONLY, "answer only", explicit_no_write=True, explicit_no_execute=True),
+            )
+        )
+        verdict = FileClaimGate().check(
+            context,
+            output="代码中写入了文件已保存的提示文本，但没有执行文件操作。",
+            tracker=_make_tracker([]),
+        )
+
+        assert verdict.passed is True
+        assert "仅回答" in verdict.reason
 
 
 class TestEvidenceCaptureGate:

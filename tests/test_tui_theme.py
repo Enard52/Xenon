@@ -28,7 +28,7 @@ def test_toolbar_has_api_model_and_context_fragments():
 def test_input_rule_spans_terminal_width(monkeypatch):
     monkeypatch.setattr(
         "xenon.repl.status_bar.shutil.get_terminal_size",
-        lambda *a: os.terminal_size((48, 24)),
+        lambda *a, **kw: os.terminal_size((48, 24)),
     )
     fragments = _bar().get_input_rule_fragments()
     assert fragments == [("class:input.rule", "─" * 47)]

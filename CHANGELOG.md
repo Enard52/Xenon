@@ -5,6 +5,32 @@
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-10-05
+
+### 单一任务运行时与跨平台可靠性
+
+- 新增 `TaskRuntime`、不可变 `TurnContract` 和任务状态机，让每轮请求的能力、
+  工作区基线、验证模式、结果码和交付状态由同一运行时统一承载。
+- 新增 `RecoveryController`，统一处理权限拒绝、策略拒绝、证据闸门拒绝和未知
+  副作用状态；相同拒绝调用只允许一次，避免 Agent 原地重试并浪费模型轮次。
+- 工具执行结果使用有界的标准 outcome code，并写入同一运行时事件流，降低 REPL、
+  引擎、工具执行器之间的状态漂移。
+
+### Windows、GBK 与配置向导
+
+- MCP stdio 在 Windows 使用后台线程读取子进程管道，统一 UTF-8，并对 GBK/非法
+  字节安全替换，避免 `select` 不支持 Windows 管道或解码异常导致任务中断。
+- 补齐 Windows 路径、用户目录、命令内置项、权限、PTY 和子进程输出差异处理。
+- `/setup` 的 Windows 粘贴输入过滤 bracketed-paste 控制序列，消费 CRLF，显示
+  掩码反馈并在连通性测试前报告已接收字符数。
+
+### 验证
+
+- Windows 离线全量：`2747 passed, 36 skipped, 38 deselected`。
+- Windows 编译检查、Ruff、打包构建和真实 DeepSeek 交互均通过。
+- `mutmut` 仍受 Windows 原生不支持且当前环境无 WSL 的限制，边界/混沌回归测试
+  已通过。
+
 ## [0.8.5] — 2026-08-22
 
 ### 安全修复：两处沙箱逃逸（写入可越出工作区围栏）

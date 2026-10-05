@@ -6,6 +6,7 @@ from xenon.nodes.tool_registry import (
     BUILTIN_TOOL_REGISTRY,
     ToolRegistry,
     register_tool_handler,
+    required_capabilities,
 )
 
 
@@ -32,6 +33,24 @@ def test_plugin_handler_can_execute_without_editing_tool_node() -> None:
         )
         assert result["success"] is True
         assert result["content"] == "ok"
+    finally:
+        BUILTIN_TOOL_REGISTRY.unregister(name)
+
+
+def test_plugin_capabilities_are_preserved_as_policy_metadata() -> None:
+    name = "test_registry_capabilities"
+
+    def handler(node, context):
+        return {"success": True, "content": "ok"}
+
+    register_tool_handler(
+        name,
+        handler,
+        risk="WRITE",
+        capabilities={"network_write"},
+    )
+    try:
+        assert required_capabilities(name) == frozenset({"network_write"})
     finally:
         BUILTIN_TOOL_REGISTRY.unregister(name)
 

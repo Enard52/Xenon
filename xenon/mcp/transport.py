@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-import select
+import queue
 import subprocess
 import threading
 import time
@@ -53,6 +53,12 @@ class StdioTransport(MCPTransport):
         # stdout 行缓冲：跨多次 _readline_with_timeout 调用保留未消费字节，
         # 避免与 BufferedReader 内部缓冲冲突。
         self._read_buf = bytearray()
+        self._stdout_chunks: queue.Queue = queue.Queue(maxsize=64)
+        self._stderr_tail = bytearray()
+        self._stderr_lock = threading.Lock()
+        self._stop_readers = threading.Event()
+        self._readers: list[threading.Thread] = []
+        self._stdout_eof = False
         self._start()
 
     def _start(self) -> None:
@@ -60,7 +66,15 @@ class StdioTransport(MCPTransport):
         cmd = [self.command] + self.args
         import os
 
+        # ``echo`` is a cmd.exe builtin on Windows, so CreateProcess cannot
+        # resolve it as a standalone executable.  Preserve compatibility with
+        # legacy MCP registrations by launching the builtin through cmd; real
+        # MCP servers should continue to use an executable command.
+        if os.name == "nt" and self.command.lower() in {"echo", "type", "ver"}:
+            cmd = ["cmd.exe", "/d", "/s", "/c", self.command, *self.args]
+
         child_env = dict(os.environ)
+        child_env["PYTHONIOENCODING"] = "utf-8"
         if self.env:
             child_env.update(self.env)
 
@@ -71,8 +85,24 @@ class StdioTransport(MCPTransport):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=child_env,
-                text=True,
+                text=False,
             )
+            self._readers = [
+                threading.Thread(
+                    target=self._pump_stdout,
+                    args=(self._proc.stdout, self._stdout_chunks, self._stop_readers),
+                    daemon=True,
+                    name="xenon-mcp-stdout",
+                ),
+                threading.Thread(
+                    target=self._pump_stderr,
+                    args=(self._proc.stderr, self._stderr_tail, self._stderr_lock),
+                    daemon=True,
+                    name="xenon-mcp-stderr",
+                ),
+            ]
+            for reader in self._readers:
+                reader.start()
             logger.info(f"MCP 子进程启动: {' '.join(cmd)} (PID: {self._proc.pid})")
         except FileNotFoundError:
             raise RuntimeError(f"MCP 命令不存在: {self.command}")
@@ -84,7 +114,7 @@ class StdioTransport(MCPTransport):
         if not self._proc or self._proc.poll() is not None:
             raise RuntimeError("MCP 子进程未运行")
 
-        data = json.dumps(message) + "\n"
+        data = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
         with self._lock:
             try:
                 self._proc.stdin.write(data)
@@ -94,7 +124,7 @@ class StdioTransport(MCPTransport):
 
     def receive(self, timeout: float = 30.0) -> dict[str, Any]:
         """接收 JSON-RPC 消息（带墙钟超时，避免 readline 无限阻塞）。"""
-        if not self._proc or self._proc.poll() is not None:
+        if not self._proc:
             raise RuntimeError("MCP 子进程未运行")
 
         with self._lock:
@@ -113,63 +143,70 @@ class StdioTransport(MCPTransport):
     def _readline_with_timeout(self, deadline: float) -> str | None:
         """从 stdout 读取一行，带整体 deadline 墙钟超时。
 
-        使用 select 等待数据可读，避免 ``readline()`` 在子进程挂起时无限阻塞
-        （B11）。返回值约定：
+        后台线程读取管道，队列等待使用整体 deadline。Windows 的 select
+        仅支持 socket，不能用于子进程管道。返回值约定：
           - 行字符串（含 ``\\n``，已 utf-8 解码）：读到完整一行；
           - ``""``：遇到 EOF 且缓冲区无残留；
           - ``None``：deadline 超时，未读到完整行。
         """
-        stream = self._proc.stdout
-        try:
-            fd = stream.fileno()
-        except (AttributeError, OSError, ValueError):
-            return None
         while True:
             nl = self._read_buf.find(b"\n")
             if nl >= 0:
                 line = bytes(self._read_buf[: nl + 1])
                 del self._read_buf[: nl + 1]
                 return line.decode("utf-8", errors="replace")
+            if self._stdout_eof:
+                line = bytes(self._read_buf)
+                self._read_buf.clear()
+                return line.decode("utf-8", errors="replace")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
             try:
-                ready, _, _ = select.select([fd], [], [], remaining)
-            except (OSError, ValueError):
-                return None
-            if not ready:
-                return None
-            try:
-                chunk = stream.buffer.read1(8192)
-            except Exception:
+                chunk = self._stdout_chunks.get(timeout=remaining)
+            except queue.Empty:
                 return None
             if not chunk:
-                # EOF：返回缓冲区残留（无换行）或空串
-                if self._read_buf:
-                    line = bytes(self._read_buf)
-                    self._read_buf.clear()
-                    return line.decode("utf-8", errors="replace")
-                return ""
-            self._read_buf += chunk
+                self._stdout_eof = True
+            else:
+                self._read_buf += chunk
+
+    @staticmethod
+    def _pump_stdout(stream, chunks, stop) -> None:
+        """Drain stdout with bounded buffering and a cancellable queue writer."""
+        try:
+            while not stop.is_set():
+                chunk = stream.read1(8192)
+                while not stop.is_set():
+                    try:
+                        chunks.put(chunk, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+                if not chunk:
+                    return
+        except (OSError, ValueError):
+            if not stop.is_set():
+                try:
+                    chunks.put(b"", timeout=0.1)
+                except queue.Full:
+                    pass
+
+    @staticmethod
+    def _pump_stderr(stream, tail, lock) -> None:
+        """Continuously drain diagnostics so a full stderr pipe cannot deadlock."""
+        try:
+            while chunk := stream.read1(4096):
+                with lock:
+                    tail.extend(chunk)
+                    del tail[:-8192]
+        except (OSError, ValueError):
+            pass
 
     def _read_stderr_safely(self) -> str:
         """非阻塞读取 stderr 当前可读内容（仅用于错误诊断）。"""
-        if not self._proc or not self._proc.stderr:
-            return ""
-        try:
-            fd = self._proc.stderr.fileno()
-            chunks: list[bytes] = []
-            while True:
-                ready, _, _ = select.select([fd], [], [], 0)
-                if not ready:
-                    break
-                data = self._proc.stderr.buffer.read1(4096)
-                if not data:
-                    break
-                chunks.append(data)
-            return b"".join(chunks).decode("utf-8", errors="replace")
-        except Exception:
-            return ""
+        with self._stderr_lock:
+            return bytes(self._stderr_tail).decode("utf-8", errors="replace")
 
     def request(
         self,
@@ -198,7 +235,7 @@ class StdioTransport(MCPTransport):
             if params:
                 message["params"] = params
 
-            data = json.dumps(message) + "\n"
+            data = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
             try:
                 self._proc.stdin.write(data)
                 self._proc.stdin.flush()
@@ -236,25 +273,22 @@ class StdioTransport(MCPTransport):
     def close(self) -> None:
         """关闭子进程。"""
         if self._proc:
-            try:
-                self._proc.stdin.close()
-            except Exception:
-                pass
-            try:
-                self._proc.stdout.close()
-            except Exception:
-                pass
-            try:
-                self._proc.stderr.close()
-            except Exception:
-                pass
+            self._stop_readers.set()
             try:
                 self._proc.terminate()
                 self._proc.wait(timeout=5)
             except Exception:
                 try:
                     self._proc.kill()
+                    self._proc.wait(timeout=5)
                 except Exception:
+                    pass
+            for reader in self._readers:
+                reader.join(timeout=1)
+            for stream in (self._proc.stdin, self._proc.stdout, self._proc.stderr):
+                try:
+                    stream.close()
+                except (OSError, ValueError):
                     pass
             self._proc = None
 

@@ -48,6 +48,8 @@ def _pull(key: str) -> tuple[str, bool, str]:
         ["docker", "pull", "--quiet", key],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     detail = (proc.stderr or proc.stdout).strip().splitlines()
     return key, proc.returncode == 0, (detail[-1] if detail else "")

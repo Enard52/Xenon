@@ -507,7 +507,7 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
         steps = list(plan.get("steps", []) or [])
         if not steps:
             return steps
-        if not self._task_requires_write(user_input):
+        if not self._task_requires_write(user_input, context=context):
             return steps
         if self._plan_has_write_step(steps):
             return steps
@@ -568,14 +568,24 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
         )
         return steps
 
-    def _has_successful_write(self, tracker: ToolExecutionTracker | None) -> bool:
+    def _has_successful_write(
+        self,
+        tracker: ToolExecutionTracker | None,
+        workspace_root: Any = None,
+        context: AgentContext | None = None,
+    ) -> bool:
         """是否已有任何成功的写类工具执行（文件被真正修改）。"""
         from xenon.engine.evidence_gate import has_successful_write
 
-        return has_successful_write(tracker)
+        runtime = context.get_runtime() if context is not None else None
+        return has_successful_write(
+            tracker,
+            workspace_root=workspace_root,
+            baseline=getattr(runtime, "workspace_baseline", None),
+        )
 
     @staticmethod
-    def _task_requires_write(user_input: str) -> bool:
+    def _task_requires_write(user_input: str, context: AgentContext | None = None) -> bool:
         """判断任务是否需要写操作（基于执行级别，非领域关键词枚举）。
 
         WRITE(2)/EXECUTE(3) 级别意味着用户要求文件变更或命令执行；
@@ -583,7 +593,7 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
         """
         from xenon.engine.evidence_gate import task_requires_write
 
-        return task_requires_write(user_input)
+        return task_requires_write(user_input, context=context)
 
     def _ensure_task_completed(
         self,
@@ -599,9 +609,12 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
         TaskCompletionGate，确定性、零 LLM）；本方法只保留补救动作（强制
         追加一轮补救执行）。返回补充后的 results；无缺口时原样返回。
         """
-        if self._has_successful_write(tracker):
+        from xenon.engine.execution_evidence import workspace_root_for
+
+        workspace_root = workspace_root_for(self)
+        if self._has_successful_write(tracker, workspace_root, context=ctx):
             return results
-        if not self._task_requires_write(user_input):
+        if not self._task_requires_write(user_input, context=ctx):
             return results
         if len(results) >= self.max_steps:
             # v0.8.3 修复：不再硬拦截。此前「侦察型计划吃满 max_steps →
@@ -625,6 +638,7 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
             results=results,
             tracker=tracker,
             max_steps=self.max_steps,
+            workspace_root=workspace_root,
         )
         if verdict is None:
             return results
@@ -704,10 +718,17 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
 
         self.verification_loop.reset()
         self.verification_loop._active = True
-        evidence = ExecutionEvidence.capture(tracker, workspace_root_for(self))
+        runtime = ctx.get_runtime() if ctx is not None else None
+        evidence = ExecutionEvidence.capture(
+            tracker,
+            workspace_root_for(self),
+            baseline=getattr(runtime, "workspace_baseline", None),
+        )
 
         while self.verification_loop.should_continue:
-            repair_prompt = self.verification_loop.feed(evidence, user_input)
+            repair_prompt = self.verification_loop.feed(
+                evidence, user_input, context=ctx
+            )
             if repair_prompt is None:
                 break
 
@@ -757,7 +778,11 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
             self.callback.on_step_done(step_id, outcome.success, outcome.content[:200])
 
             # 重新捕获证据并记录本轮结果
-            evidence = ExecutionEvidence.capture(tracker, workspace_root_for(self))
+            evidence = ExecutionEvidence.capture(
+                tracker,
+                workspace_root_for(self),
+                baseline=getattr(runtime, "workspace_baseline", None),
+            )
             outcome_tag = (
                 "fixed"
                 if outcome.success and evidence.successful_tests
@@ -1279,6 +1304,9 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
             {"role": "user", "content": prompt},
         ]
         ctx = context or AgentContext()
+        from xenon.engine.execution_evidence import workspace_root_for
+
+        workspace_root = workspace_root_for(self)
         final_answer: str | None = None
         last_response = ""
         no_write_retries = 0
@@ -1295,7 +1323,11 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
 
             if parsed.get("final_answer"):
                 # 强制补救模式：无写工具时拒绝接受 final_answer，要求重试
-                if require_write_tool and not self._has_successful_write(tracker):
+                if require_write_tool and not self._has_successful_write(
+                    tracker,
+                    workspace_root=workspace_root,
+                    context=ctx,
+                ):
                     if no_write_retries < max_no_write_retries:
                         no_write_retries += 1
                         force_msg = (

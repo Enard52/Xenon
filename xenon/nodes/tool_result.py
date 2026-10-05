@@ -40,6 +40,7 @@ class ToolResult:
     filters: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    outcome_code: str = ""
     schema_version: str = TOOL_RESULT_SCHEMA_VERSION
 
     @classmethod
@@ -137,6 +138,7 @@ class ToolResult:
             "filter_end_time",
             "query",
             "error",
+            "outcome_code",
             "schema_version",
             "tool_result",
         }
@@ -167,6 +169,7 @@ class ToolResult:
             filters=filters,
             metadata=metadata,
             error=str(payload["error"]) if payload.get("error") else None,
+            outcome_code=str(payload.get("outcome_code") or ""),
         )
 
     def to_dict(self) -> dict[str, Any]:

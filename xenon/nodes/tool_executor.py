@@ -28,7 +28,7 @@ from xenon.engine.circuit_breaker import BreakerRegistry
 from xenon.engine.context import AgentContext
 from xenon.engine.tool_tracker import ToolExecutionTracker
 from xenon.nodes.tool_node import ToolNode, _DYNAMIC_TOOLS
-from xenon.nodes.tool_registry import BUILTIN_TOOL_REGISTRY
+from xenon.nodes.tool_registry import BUILTIN_TOOL_REGISTRY, required_capabilities
 from xenon.nodes.tool_result import ToolResult, enrich_tool_result
 from xenon.engine.callbacks import mask_sensitive_params
 from xenon.engine.evidence_gate import GateVerdict
@@ -37,6 +37,10 @@ from xenon.engine.evidence_runtime import (
     EvidenceSource,
     EventKind,
     LifecyclePhase,
+)
+from xenon.engine.recovery_controller import controller_for
+from xenon.engine.task_runtime import (
+    canonical_outcome_code,
 )
 from xenon.repl.system_config import get_config
 
@@ -168,16 +172,12 @@ def required_execution_level(tool_name: str, params: dict[str, Any]) -> int:
         # Unknown remote tools are not assumed to be read-only merely because
         # they travel through a generic MCP transport.
         return 3
-    if tool_name in _SENSITIVE_TOOLS or tool_name in _DYNAMIC_TOOLS:
+    capabilities = required_capabilities(tool_name, params=params)
+    if "process_execute" in capabilities or "spawn_agent" in capabilities:
         return 3
-    if tool_name in _WRITE_TOOLS or tool_name == "create_skill":
+    if "workspace_write" in capabilities or "network_write" in capabilities or "git_mutate" in capabilities:
         return 2
-    # 查注册表 risk 字段（优先级高于旧的硬编码集合）
-    defn = BUILTIN_TOOL_REGISTRY.get(tool_name)
-    if defn is not None:
-        return {"INFO": 1, "WRITE": 2, "SENSITIVE": 3}.get(defn.risk, 3)
-    # 未知工具从严：不假设只读（同 MCP 未知远端工具）
-    return 3
+    return 1
 
 
 def execution_policy_denial(
@@ -187,11 +187,57 @@ def execution_policy_denial(
 ) -> str | None:
     """Return a hard-denial reason when a tool exceeds this turn's policy."""
 
-    authorized = context.get("_execution_level")
+    # TaskRuntime is the source of truth once a REPL turn has been bound.
+    # Keep the legacy context key as a library/backward-compatibility fallback
+    # for callers that execute a ToolExecutor without a runtime.
+    task_runtime = context.get_runtime() if context is not None else None
+    authorized = (
+        task_runtime.contract.policy_level
+        if task_runtime is not None
+        else context.get("_execution_level")
+    )
     if authorized is None:
         # Backward compatibility for direct engine/library users that have not
         # opted into REPL-level policy classification.
         return None
+    if task_runtime is not None:
+        required_caps = required_capabilities(tool_name, params=params)
+        missing = sorted(
+            capability
+            for capability in required_caps
+            if not task_runtime.allows(capability)
+        )
+        if missing:
+            level_labels = {0: "仅回答", 1: "只读", 2: "可写入", 3: "可执行"}
+            labels = {
+                "workspace_read": "只读",
+                "workspace_write": "可写入",
+                "process_execute": "可执行",
+                "network_read": "网络读取",
+                "network_write": "网络写入",
+                "git_mutate": "Git 修改",
+                "spawn_agent": "子 Agent 委派",
+            }
+            alternatives: list[str] = []
+            for candidate in (
+                "read_file",
+                "search_files",
+                "write_file",
+                "edit_file",
+                "batch_write",
+            ):
+                candidate_caps = required_capabilities(candidate)
+                if candidate != tool_name and all(
+                    task_runtime.allows(capability) for capability in candidate_caps
+                ):
+                    alternatives.append(candidate)
+            return (
+                f"本轮执行策略为“{level_labels.get(int(authorized), str(authorized))}”，"
+                f"未授权工具 {tool_name} 所需能力：{', '.join(missing)}。"
+                "请改用当前任务已授权的工具"
+                + (f"（可选：{'、'.join(alternatives[:3])}）" if alternatives else "")
+                + "；只有用户明确提出该类操作时，才需要重新授权。"
+            )
     required = required_execution_level(tool_name, params)
     if int(authorized) >= required:
         return None
@@ -199,7 +245,7 @@ def execution_policy_denial(
     return (
         f"本轮执行策略为“{labels.get(int(authorized), str(authorized))}”，"
         f"不允许工具 {tool_name} 所需的“{labels[required]}”权限。"
-        "如需扩大范围，请由用户在新指令中明确提出。"
+        "请改用当前权限允许的替代工具；只有用户明确提出更高权限操作时，才需要重新授权。"
     )
 
 
@@ -644,6 +690,11 @@ class ToolExecuteResult:
     recoverable: bool = False
     execution_id: str = ""
     lifecycle: tuple[dict[str, Any], ...] = field(default_factory=tuple, repr=False)
+    # Structured outcome is separate from the lifecycle state: a policy
+    # denial is a failed attempt, but it is recoverable by choosing another
+    # authorized tool and must not look like an I/O failure.
+    outcome_code: str = ""
+    recovery_hint: str = ""
 
     def __post_init__(self) -> None:
         """Always expose a structured result, including early failures."""
@@ -668,17 +719,44 @@ class ToolExecuteResult:
                     "success": self.success,
                     "content": self.observation,
                     "error": self.error,
+                    "outcome_code": self.outcome_code,
                 }
+            elif self.outcome_code:
+                raw = {**raw, "outcome_code": self.outcome_code}
             self.structured = ToolResult.from_raw(self.tool_name, raw)
 
     def format_observation(self) -> str:
         """供引擎回填给 LLM 的观察文本。"""
-        return self.observation
+        hint = self.next_hint()
+        if not hint or hint in self.observation:
+            return self.observation
+        return f"{self.observation}\n\n恢复建议：{hint}"
 
     def next_hint(self) -> str:
         """按失败原因给情境化下一步提示。"""
         if self.success:
             return ""
+        if self.outcome_code == "policy_denied":
+            if self.tool_name == "command":
+                base = (
+                    "当前任务已授权文件写入，但未授权执行命令；请改用 "
+                    "write_file、edit_file 或 batch_write。无需重新授权当前任务。"
+                )
+                return f"{base} {self.recovery_hint}" if self.recovery_hint else base
+            return self.recovery_hint or (
+                f"工具 {self.tool_name} 超出本轮已授权能力；请改用允许的替代工具，"
+                "不要重复调用该工具，也不要要求用户重新授权当前任务。"
+            )
+        if self.outcome_code in {"permission_required", "permission_denied"}:
+            return self.recovery_hint or (
+                f"工具 {self.tool_name} 需要用户确认；请暂停并等待确认，"
+                "不要自动重试。"
+            )
+        if self.outcome_code == "evidence_missing":
+            return self.recovery_hint or (
+                f"工具 {self.tool_name} 缺少前置证据；请先读取或检查目标状态，"
+                "再决定是否重试。"
+            )
         if self.cancelled:
             return f"工具 {self.tool_name} 已取消，不应自动重试。"
         if self.timed_out:
@@ -686,6 +764,11 @@ class ToolExecuteResult:
                 return f"只读工具 {self.tool_name} 超时，可稍后显式重试。"
             return (
                 f"工具 {self.tool_name} 超时且状态未知；请先核验副作用，不要自动重试。"
+            )
+        if self.outcome_code == "status_unknown":
+            return (
+                f"工具 {self.tool_name} 的副作用状态未知；请先读取或检查实际状态，"
+                "确认未完成后再决定是否重试。"
             )
         err = (self.error or "").lower()
         if "不存在" in err or "not found" in err:
@@ -937,6 +1020,7 @@ class ToolExecutor:
         observation: str,
         tracker: ToolExecutionTracker | None,
         context: AgentContext | None = None,
+        outcome_code: str = "",
     ) -> None:
         """记录执行后证据；正文只保留摘要，敏感参数不进入 ledger。"""
         context = context or AgentContext()
@@ -952,6 +1036,7 @@ class ToolExecutor:
                 "params": mask_sensitive_params(params),
                 "success": success,
                 "summary": observation[:500],
+                "outcome_code": outcome_code,
             },
         )
 
@@ -1055,13 +1140,40 @@ class ToolExecutor:
             raw: dict[str, Any] | None = None,
             retryable: bool = False,
             error_kind: str | None = None,
+            recovery_hint: str = "",
         ) -> ToolExecuteResult:
+            runtime = context.get_runtime() if context is not None else None
             checkpoint = transition(
                 state,
                 attempt=attempts,
                 retryable=retryable,
                 error_kind=error_kind,
             )
+            outcome_code = canonical_outcome_code(
+                error_kind,
+                success=success,
+                tool_class=tool_class,
+                state=state.value,
+                status_unknown=bool(checkpoint.get("status_unknown")),
+            )
+            recovery = controller_for(context)
+            recovery_decision = recovery.record(
+                tool_name,
+                outcome_code,
+                error or "",
+            )
+            if not recovery_hint and recovery_decision.hint:
+                recovery_hint = recovery_decision.hint
+            if runtime is not None:
+                runtime.record_tool_outcome(
+                    tool_name,
+                    outcome_code,
+                    success=success,
+                    tool_class=tool_class,
+                    state=state.value,
+                    error=error or "",
+                    status_unknown=bool(checkpoint.get("status_unknown")),
+                )
             if checkpoint.get("status_unknown"):
                 observation += (
                     "\n⚠️ 本次有副作用的操作状态未知，可能已部分生效；"
@@ -1077,9 +1189,16 @@ class ToolExecutor:
                     state=state.value,
                     attempts=attempts,
                     elapsed_seconds=float(checkpoint["elapsed_seconds"]),
+                    outcome_code=outcome_code,
                 )
             self.record_tool_observation(
-                tool_name, params, success, observation, tracker, context
+                tool_name,
+                params,
+                success,
+                observation,
+                tracker,
+                context,
+                outcome_code,
             )
             if self.execution_policy is not None:
                 self.execution_policy.emit(
@@ -1105,6 +1224,8 @@ class ToolExecutor:
                 recoverable=bool(checkpoint["recoverable"]),
                 execution_id=execution_id,
                 lifecycle=tuple(lifecycle),
+                outcome_code=outcome_code,
+                recovery_hint=recovery_hint,
             )
 
         transition(ToolExecutionState.PENDING)
@@ -1159,6 +1280,8 @@ class ToolExecutor:
         # ── Stage 1.5: 本轮执行策略硬边界 ──
         policy_reason = execution_policy_denial(tool_name, params, context)
         if policy_reason:
+            recovery = controller_for(context)
+            repeat = recovery.check(tool_name, policy_reason)
             logger.info(f"{trace_p}执行策略拒绝: {tool_name} — {policy_reason}")
             return finish(
                 False,
@@ -1166,6 +1289,7 @@ class ToolExecutor:
                 state=ToolExecutionState.FAILED,
                 error=policy_reason,
                 error_kind="policy_denied",
+                recovery_hint=repeat.hint if repeat.repeated else "",
             )
 
         # ── Stage 2: 参数幻觉校验 ──
@@ -1215,12 +1339,15 @@ class ToolExecutor:
                             f"{trace_p}自动补读后证据充足，放行 {tool_name}（原拦截: {evidence_verdict.reason}）",
                         )
             if not evidence_verdict.passed:
+                recovery = controller_for(context)
+                repeat = recovery.check(tool_name, evidence_verdict.reason)
                 return finish(
                     False,
                     f"⛔ 在线证据验证拒绝: {evidence_verdict.reason}",
                     state=ToolExecutionState.FAILED,
                     error=evidence_verdict.reason,
                     error_kind="evidence_denied",
+                    recovery_hint=repeat.hint if repeat.repeated else "",
                 )
 
         # ── Stage 3: 权限闸门（v0.5.0: 接入 PermissionGate） ──
@@ -1241,6 +1368,8 @@ class ToolExecutor:
                 risk_override=risk_override,
             )
             if not allowed:
+                recovery = controller_for(context)
+                repeat = recovery.check(tool_name, reason)
                 logger.info(f"{trace_p}权限拒绝: {tool_name} — {reason}")
                 cancelled = "取消任务" in reason
                 if cancelled:
@@ -1258,6 +1387,7 @@ class ToolExecutor:
                     ),
                     error=reason,
                     error_kind=("cancelled" if cancelled else "permission_denied"),
+                    recovery_hint=repeat.hint if repeat.repeated else "",
                 )
         elif tool_class == "SENSITIVE":
             # 无 PermissionGate 时保持旧行为：仅记录
@@ -1324,6 +1454,7 @@ class ToolExecutor:
                 # 执行返回失败
                 last_error = str(result.get("error") or result)
                 terminal = is_terminal_error(last_error)
+                reported_outcome = str(result.get("outcome_code") or "").strip()
                 if not terminal:
                     # 断路器度量的是「工具自身故障」（超时/网络/限流）。
                     # 终端错误（参数非法/文件不存在/安全拦截）是调用方
@@ -1368,9 +1499,13 @@ class ToolExecutor:
                         and not terminal
                     ),
                     error_kind=(
-                        "timeout"
-                        if final_state is ToolExecutionState.TIMED_OUT
-                        else ("terminal" if terminal else "transient")
+                        reported_outcome
+                        if reported_outcome
+                        else (
+                            "timeout"
+                            if final_state is ToolExecutionState.TIMED_OUT
+                            else ("terminal" if terminal else "transient")
+                        )
                     ),
                 )
             except KeyboardInterrupt:
