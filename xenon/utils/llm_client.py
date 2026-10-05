@@ -1825,15 +1825,121 @@ def _stream_openai_compat(
     manifest: dict[str, Any] | None = None,
     checkpoint_manager: Any | None = None,
 ) -> Generator[str, None, None]:
-    """OpenAI 兼容格式流式调用。
+    """OpenAI 兼容格式流式调用（finish_reason=length 自动续写）。
 
-    P3-Q1 续 / §8.8.1：机会性提取末尾 chunk 的 ``usage``（部分兼容厂商默认随
-    末帧返回；OpenAI 官方需 ``stream_options.include_usage``，此处不强加以避免
-    对不支持的厂商触发 400）。提取到则经 usage 回调发出真实 token 用量。
+    与非流式 ``_call_openai_compat`` 保持同一套 B12 语义：命中输出上限时，先把
+    本段可见内容作为 assistant、再请求“继续/缺失片段”，无缝拼接后续 delta，长
+    回答不会在中途被切断。推理模型在可见输出前耗尽预算（本段无 content）时，改为
+    扩大 max_tokens 重发同一请求，而不是用“继续”开启新一轮。续写次数耗尽仍
+    length，则 fail-closed 抛 ResponseTruncatedError。
 
-    Phase 3: 支持检查点管理 - 周期性保存生成进度，网络中断时可从检查点恢复。
+    P3-Q1 续 / §8.8.1：机会性提取末帧 usage，跨续写段累计后在结束时一次性经
+    usage 回调发出（与非流式一致），避免把多段用量重复计数。
     """
     import time
+
+    msgs = list(messages)  # 不修改调用方列表
+    attempts = 0
+    current_max_tokens = max_tokens
+    totals = LLMUsage()
+    accumulated = ""
+    accumulated_tokens = 0
+    got_usage = False
+    t0 = time.time()
+
+    while True:
+        segment = _stream_openai_segment(
+            endpoint,
+            msgs,
+            current_max_tokens,
+            temperature,
+            timeout,
+            model_id,
+            reasoning_effort=reasoning_effort,
+            manifest=manifest,
+            checkpoint_manager=checkpoint_manager,
+            initial_content=accumulated,
+            initial_tokens=accumulated_tokens,
+        )
+        seg_content, finish, usage_data = yield from segment
+
+        accumulated += seg_content
+        if seg_content:
+            from xenon.utils.token_estimator import estimate_tokens
+
+            accumulated_tokens += estimate_tokens(seg_content)
+        if usage_data is not None:
+            got_usage = True
+            totals.add(_extract_usage(usage_data, endpoint.provider))
+            # 每段 API 调用都向响应回调上报（缓存归因按调用计数）。
+            _emit_response(model_id, _response_with_manifest(usage_data, manifest))
+
+        if finish != "length":
+            break
+
+        # 推理模型可能把整段预算花在隐藏推理上、本段无可见内容。此时不能用
+        # “继续”（会开启新一轮），而应扩大预算重发同一请求，直到出现可见输出
+        # （或有界重试耗尽）。
+        if not seg_content:
+            if attempts < MAX_CONTINUATIONS:
+                expanded = max(
+                    current_max_tokens * 2,
+                    current_max_tokens + 256,
+                )
+                if expanded > current_max_tokens:
+                    attempts += 1
+                    logger.info(
+                        "流式 API 推理阶段在可见输出前被截断，扩大 max_tokens: "
+                        "%s → %s (%s/%s)",
+                        current_max_tokens,
+                        expanded,
+                        attempts,
+                        MAX_CONTINUATIONS,
+                    )
+                    current_max_tokens = expanded
+                    continue
+            # 没有可安全续写的可见片段 → 落到下方 fail-closed 路径。
+            attempts = MAX_CONTINUATIONS
+
+        if attempts >= MAX_CONTINUATIONS:
+            raise ResponseTruncatedError(
+                f"流式 API 响应在 {MAX_CONTINUATIONS} 次续写后仍被截断 "
+                f"(finish_reason=length)，内容可能不完整；请增大 max_tokens "
+                "或精简输入。"
+            )
+
+        attempts += 1
+        kind = _structured_response_kind(accumulated)
+        logger.info(
+            "流式 API 响应被截断 (finish_reason=length)，自动续写%s…",
+            f"（{kind} 协议片段）" if kind else "",
+        )
+        msgs.append({"role": "assistant", "content": seg_content})
+        msgs.append({"role": "user", "content": _continuation_prompt(kind)})
+
+    if got_usage:
+        _emit_usage(model_id, totals, time.time() - t0)
+
+
+def _stream_openai_segment(
+    endpoint: ModelEndpoint,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    temperature: float,
+    timeout: float,
+    model_id: str,
+    *,
+    reasoning_effort: str | None = None,
+    manifest: dict[str, Any] | None = None,
+    checkpoint_manager: Any | None = None,
+    initial_content: str = "",
+    initial_tokens: int = 0,
+) -> Generator[str, None, tuple[str, str, Any]]:
+    """Perform one OpenAI-compatible SSE request.
+
+    Yields visible-content deltas and, on completion, ``return``s
+    ``(segment_content, finish_reason, usage_data)``.
+    """
     from xenon.utils.token_estimator import estimate_tokens
 
     url = f"{endpoint.base_url}/chat/completions"
@@ -1853,13 +1959,12 @@ def _stream_openai_compat(
         # usage chunk. Request it so /cost and /cache have provider evidence.
         payload["stream_options"] = {"include_usage": True}
     _apply_reasoning_effort(payload, reasoning_effort)
-    t0 = time.time()
+
     usage_data: dict[str, Any] | None = None
     finish_reason = ""
-
-    # Phase 3: 检查点管理初始化
-    accumulated_content = ""
-    accumulated_tokens = 0
+    segment_content = ""
+    accumulated_content = initial_content
+    accumulated_tokens = initial_tokens
 
     with _create_http_client(timeout=timeout) as client:
         with client.stream("POST", url, json=payload, headers=headers) as resp:
@@ -1884,33 +1989,30 @@ def _stream_openai_compat(
                 delta = choice.get("delta", {})
                 content = delta.get("content")
                 if content:
-                    # Phase 3: 累积内容和 token 数
+                    segment_content += content
                     accumulated_content += content
                     accumulated_tokens += estimate_tokens(content)
 
-                    # Phase 3: 检查是否需要保存检查点
-                    if checkpoint_manager and checkpoint_manager.should_save(accumulated_tokens):
+                    if checkpoint_manager and checkpoint_manager.should_save(
+                        accumulated_tokens
+                    ):
                         checkpoint = checkpoint_manager.save_checkpoint(
                             accumulated_content,
                             accumulated_tokens,
-                            metadata={"model_id": model_id, "provider": endpoint.provider}
+                            metadata={
+                                "model_id": model_id,
+                                "provider": endpoint.provider,
+                            },
                         )
                         logger.debug(
                             f"流式生成检查点 #{checkpoint.sequence} "
-                            f"(tokens={accumulated_tokens}, age={checkpoint.age():.1f}s)"
+                            f"(tokens={accumulated_tokens}, "
+                            f"age={checkpoint.age():.1f}s)"
                         )
 
                     yield content
-    if usage_data is not None:
-        _emit_usage(
-            model_id, _extract_usage(usage_data, endpoint.provider), time.time() - t0
-        )
-        # 发出响应回调（供 CacheTracker 等订阅原始 API 响应）
-        _emit_response(model_id, _response_with_manifest(usage_data, manifest))
-    if finish_reason == "length":
-        raise ResponseTruncatedError(
-            "流式 API 响应因 finish_reason=length 被截断，已拒绝把残缺内容当作完整回答"
-        )
+
+    return segment_content, finish_reason, usage_data
 
 
 def _stream_anthropic(

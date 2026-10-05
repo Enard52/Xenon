@@ -5,6 +5,23 @@
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-10-05
+
+### 修复：流式输出在未完成时被截断
+
+- 修复直接对话默认走流式（`chat_completion_stream` / `_stream_openai_compat`）时，回答一旦命中输出 token 上限（`finish_reason=length`；推理模型的隐藏推理与可见输出共享预算、厂商侧上限较低时尤为常见）就在中途被切断——此前流式路径仅抛出异常、不做续写。
+- 流式路径补齐与非流式一致的 B12 续写：命中长度时把本段可见内容作为 assistant、请求“继续 / 只输出缺失片段”，无缝拼接后续 delta；本段无可见内容（推理吃掉预算）时改为扩大 `max_tokens` 重发同一请求；续写次数耗尽仍不完整则 fail-closed 抛 `ResponseTruncatedError`。usage 跨续写段累计、结束时一次性发出，避免重复计数。
+- 新增 `tests/test_stream_continuation.py`（6 用例），覆盖 length 续写、预算扩张、JSON 片段、用量累计、异常与消息不变性。
+
+### 文档
+
+- 精简根目录 `README.md`：426 行 → 114 行，去除重复的特性 / 引擎 / 架构内容，深度内容统一下沉到 `docs/`。
+
+### 验证
+
+- Windows 离线全量：`2753 passed, 36 skipped`（在 0.9.3 的 2747 基础上新增 6 个流式续写用例）。
+
+
 ## [0.9.3] — 2026-10-05
 
 ### 修复：Windows 粘贴后下一轮输入无响应
