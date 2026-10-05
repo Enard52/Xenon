@@ -2,6 +2,7 @@
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Barrier, BrokenBarrierError
 from unittest.mock import patch
 
 import pytest
@@ -112,11 +113,21 @@ def test_optimal_concurrency_level(mock_fetch, temp_cache_dir, mock_credentials)
 
     mock_fetch.side_effect = mock_network_delay
 
-    # 记录并发调用的时间点
+    # 等待所有任务进入网络调用，直接验证它们发生了重叠。
+    # 不使用固定的线程启动时间跨度阈值：共享 runner 的调度抖动可能让
+    # 合法的并发调用相隔几百毫秒，但它们仍然会在同一批线程中重叠执行。
+    overlap_barrier = Barrier(3)
+    barrier_broken = False
     call_times = []
 
     def track_calls(*args, **kwargs):
+        nonlocal barrier_broken
         call_times.append(time.time())
+        try:
+            overlap_barrier.wait(timeout=1.0)
+        except BrokenBarrierError:
+            barrier_broken = True
+            raise
         time.sleep(0.5)
         return ["model1", "model2"]
 
@@ -129,11 +140,10 @@ def test_optimal_concurrency_level(mock_fetch, temp_cache_dir, mock_credentials)
     # 验证返回了正确数量的 providers
     assert len(providers) == 3, f"应该返回 3 个 providers，实际返回 {len(providers)}"
 
-    # 验证所有调用基本同时发生（并行）
-    if len(call_times) > 1:
-        time_spread = max(call_times) - min(call_times)
-        # 并行调用应该在很短时间内都启动（<0.1秒）
-        assert time_spread < 0.1, f"调用时间跨度 {time_spread:.3f}s，不够并行"
+    # 屏障只有在三个网络任务同时运行时才能释放；这比依赖线程启动
+    # 时间差更稳定，也能区分真正的串行执行。
+    assert len(call_times) == 3
+    assert not barrier_broken, "网络调用未能并发重叠"
 
     # 总耗时应该接近单个请求时间（并行效果）
     assert elapsed < 1.0, f"并行请求耗时 {elapsed:.2f}s，应该 <1.0s"
