@@ -119,12 +119,15 @@ def test_stream_exhausted_continuations_raises(monkeypatch):
     client = _Client([_segment("x", finish="length") for _ in range(6)])
     _patch(monkeypatch, client)
 
-    with pytest.raises(ResponseTruncatedError, match="finish_reason=length"):
+    with pytest.raises(ResponseTruncatedError, match="finish_reason=length") as caught:
         list(
             lc.chat_completion_stream(
                 "openai/m", [{"role": "user", "content": "hi"}]
             )
         )
+
+    assert caught.value.partial_content == "x" * (lc.MAX_CONTINUATIONS + 1)
+    assert caught.value.model_id == "openai/m"
 
     # Initial request + exactly MAX_CONTINUATIONS continuation requests.
     assert len(client.requests) == 1 + lc.MAX_CONTINUATIONS

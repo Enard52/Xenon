@@ -9,195 +9,334 @@ from xenon.repl.input_buffer import PastedTextStore, _ShiftTabSignal
 
 def _read_input_windows(self) -> str:
     import ctypes
-    import ctypes.wintypes as wt
     import msvcrt
+    import time
+    import unicodedata
 
     VK_SHIFT = 0x10
-    user32 = ctypes.windll.user32
+    ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+    STD_INPUT_HANDLE = -10
+    STD_OUTPUT_HANDLE = -11
+
     kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
 
     GetAsyncKeyState = user32.GetAsyncKeyState
     GetAsyncKeyState.argtypes = [ctypes.c_int]
     GetAsyncKeyState.restype = ctypes.c_short
 
-    # Console API 用于可靠地删除字符
-    STD_OUTPUT_HANDLE = -11
-    h_stdout = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+    # 64 位句柄必须用 c_void_p，否则 GetStdHandle 的返回值会被截断成 32 位。
+    kernel32.GetStdHandle.argtypes = [ctypes.c_int]
+    kernel32.GetStdHandle.restype = ctypes.c_void_p
+    kernel32.GetConsoleMode.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+    kernel32.GetConsoleMode.restype = ctypes.c_bool
+    kernel32.SetConsoleMode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    kernel32.SetConsoleMode.restype = ctypes.c_bool
 
-    class COORD(ctypes.Structure):
-        _fields_ = [("X", wt.SHORT), ("Y", wt.SHORT)]
+    kbhit = getattr(msvcrt, "kbhit", lambda: False)
 
-    class SMALL_RECT(ctypes.Structure):
-        _fields_ = [
-            ("Left", wt.SHORT),
-            ("Top", wt.SHORT),
-            ("Right", wt.SHORT),
-            ("Bottom", wt.SHORT),
-        ]
-
-    class CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", COORD),
-            ("dwCursorPosition", COORD),
-            ("wAttributes", wt.WORD),
-            ("srWindow", SMALL_RECT),
-            ("dwMaximumWindowSize", COORD),
-        ]
-
-    SetConsoleCursorPosition = kernel32.SetConsoleCursorPosition
-    SetConsoleCursorPosition.argtypes = [wt.HANDLE, COORD]
-    SetConsoleCursorPosition.restype = wt.BOOL
-
-    FillConsoleOutputCharacterW = kernel32.FillConsoleOutputCharacterW
-    FillConsoleOutputCharacterW.argtypes = [
-        wt.HANDLE,
-        wt.WCHAR,
-        wt.DWORD,
-        COORD,
-        ctypes.POINTER(wt.DWORD),
-    ]
-    FillConsoleOutputCharacterW.restype = wt.BOOL
-
-    GetConsoleScreenBufferInfo = kernel32.GetConsoleScreenBufferInfo
-    GetConsoleScreenBufferInfo.argtypes = [
-        wt.HANDLE,
-        ctypes.POINTER(CONSOLE_SCREEN_BUFFER_INFO),
-    ]
-    GetConsoleScreenBufferInfo.restype = wt.BOOL
+    # ── 控制台模式：开启 VT 输入/输出，关闭快速编辑与鼠标输入 ──
+    # 关键：ENABLE_VIRTUAL_TERMINAL_INPUT 与 ENABLE_LINE_INPUT / ENABLE_ECHO_INPUT
+    # 互斥。默认 conhost 下行输入+回显都开着，直接 OR 进 VT_INPUT 会让
+    # SetConsoleMode 失败——VT 输入、快速编辑关闭、鼠标输入关闭全部静默失效，
+    # 这正是此前反复修不好的根因。这里显式设置一个最小化原始输入模式：
+    #   - 保留 PROCESSED_INPUT（Ctrl+C 仍以 \x03 送达）；
+    #   - 开启 VT_INPUT（括号粘贴/方向键以 \x1b[ 序列到达）；
+    #   - EXTENDED_FLAGS 置位以控制快速编辑，并关闭 QUICK_EDIT（鼠标点选冻结
+    #     控制台）与 MOUSE_INPUT（鼠标事件混进输入队列，导致 kbhit 误判、getwch 阻塞）。
+    ENABLE_PROCESSED_INPUT = 0x0001
+    ENABLE_QUICK_EDIT_MODE = 0x0040
+    ENABLE_MOUSE_INPUT = 0x0010
+    ENABLE_EXTENDED_FLAGS = 0x0080
+    hin = kernel32.GetStdHandle(STD_INPUT_HANDLE)
+    in_mode = ctypes.c_ulong()
+    orig_in_mode = None
+    if kernel32.GetConsoleMode(hin, ctypes.byref(in_mode)):
+        orig_in_mode = in_mode.value
+        # 只保留这三个标志；其余（LINE_INPUT 0x02 / ECHO_INPUT 0x04 /
+        # MOUSE_INPUT 0x10 / QUICK_EDIT 0x40 / INSERT 0x20 / AUTO_POSITION 0x100）
+        # 都被清零——它们要么与 VT 输入互斥，要么会把鼠标事件混进输入队列。
+        desired = (
+            ENABLE_PROCESSED_INPUT
+            | ENABLE_EXTENDED_FLAGS
+            | ENABLE_VIRTUAL_TERMINAL_INPUT
+        )
+        if in_mode.value != desired:
+            kernel32.SetConsoleMode(hin, desired)
+    hout = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+    out_mode = ctypes.c_ulong()
+    if kernel32.GetConsoleMode(hout, ctypes.byref(out_mode)):
+        if not (out_mode.value & ENABLE_VIRTUAL_TERMINAL_PROCESSING):
+            kernel32.SetConsoleMode(
+                hout, out_mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            )
 
     def shift_held() -> bool:
         return bool(GetAsyncKeyState(VK_SHIFT) & 0x8000)
 
-    def get_cursor_pos() -> COORD:
-        info = CONSOLE_SCREEN_BUFFER_INFO()
-        GetConsoleScreenBufferInfo(h_stdout, ctypes.byref(info))
-        return info.dwCursorPosition
+    # ── 显示宽度（CJK 字符占 2 列）────────────────────────
+    def _char_width(ch: str) -> int:
+        ea = unicodedata.east_asian_width(ch)
+        return 2 if ea in ("W", "F") else 1
 
-    def move_cursor(pos: COORD) -> None:
-        SetConsoleCursorPosition(h_stdout, pos)
+    def _display_width(s: str) -> int:
+        return sum(_char_width(c) for c in s)
 
-    def erase_char(ch: str) -> None:
-        """删除一个字符。ASCII 用 ANSI（快），CJK 用 Console API（正确覆盖 2 列宽）。"""
-        if ord(ch) > 0x7F:
-            # CJK 等宽字符：占 2 列，用 Console API 覆盖
-            pos = get_cursor_pos()
-            if pos.X >= 2:
-                new_pos = COORD(pos.X - 2, pos.Y)
-                move_cursor(new_pos)
-                written = wt.DWORD(0)
-                FillConsoleOutputCharacterW(
-                    h_stdout, " ", 2, new_pos, ctypes.byref(written)
-                )
-        else:
-            # ASCII：ANSI 一次搞定
-            sys.stdout.write("\b \b")
-            sys.stdout.flush()
+    PROMPT = "\033[1;36mYou\033[0m: "
+    CONT = "\033[90m...\033[0m "
 
-    sys.stdout.write("\n\033[1;36mYou\033[0m: ")
+    # 开启括号粘贴模式：终端用 \x1b[200~ … \x1b[201~ 包裹粘贴内容。
+    sys.stdout.write("\033[?2004h")
+    sys.stdout.write("\n" + PROMPT)
     sys.stdout.flush()
 
     lines: list[str] = []
     current_line: list[str] = []
-    cursor_pos: int = 0  # 光标在 current_line 中的位置索引
+    cursor_pos: int = 0
+
+    paste_mode = False
+    paste_buffer: list[str] = []
 
     def _redraw_from_cursor() -> None:
-        """从光标位置重绘到行尾。"""
-        # 打印光标右侧的所有字符
+        """从光标处重绘到行尾，并用 ANSI 清行清除残留的宽字符。"""
         tail = "".join(current_line[cursor_pos:])
         if tail:
             sys.stdout.write(tail)
-        # 清除行尾残留字符（多出一个空格用于覆盖）
-        sys.stdout.write(" ")
-        # 把光标移回到正确位置
-        back = len(tail) + 1
-        if back > 0:
+        sys.stdout.write("\033[K")
+        back = _display_width(tail)
+        if back:
             sys.stdout.write(f"\033[{back}D")
         sys.stdout.flush()
 
-    while True:
-        ch = msvcrt.getwch()
+    def _insert_text(text: str) -> None:
+        """把一段文本（通常是粘贴内容）插入当前行，正确处理换行。"""
+        nonlocal current_line, cursor_pos
+        parts = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        before = current_line[:cursor_pos]
+        after = current_line[cursor_pos:]
+        if len(parts) == 1:
+            inserted = list(parts[0])
+            current_line = before + inserted + after
+            cursor_pos += len(inserted)
+            return
+        lines.append("".join(before) + parts[0])
+        lines.extend(parts[1:-1])
+        current_line = list(parts[-1]) + after
+        cursor_pos = len(parts[-1])
 
-        if ch in ("\r", "\n"):
-            if shift_held():
-                # 多行模式：跳到行尾再换行
-                if cursor_pos < len(current_line):
-                    sys.stdout.write(f"\033[{len(current_line) - cursor_pos}C")
-                    cursor_pos = len(current_line)
-                lines.append("".join(current_line))
-                current_line = []
-                cursor_pos = 0
-                sys.stdout.write("\n\033[90m...\033[0m ")
-                sys.stdout.flush()
-            else:
-                # 跳到行尾再回车（避免残留）
-                if cursor_pos < len(current_line):
-                    sys.stdout.write(f"\033[{len(current_line) - cursor_pos}C")
-                break
+    def _finish_paste() -> None:
+        nonlocal paste_mode, paste_buffer
+        _insert_text("".join(paste_buffer))
+        paste_buffer = []
+        paste_mode = False
+        _redraw_from_cursor()
 
-        elif ch == "\x03":
-            raise KeyboardInterrupt
+    def _read_escape() -> str:
+        """读完整的一段 ESC 序列（短轮询，避免与后续字节竞争）。
 
-        elif ch in ("\x08", "\x7f"):
-            # Backspace: 删除光标左侧字符
-            if cursor_pos > 0:
-                current_line.pop(cursor_pos - 1)
-                cursor_pos -= 1
-                # 光标左移一格
-                sys.stdout.write("\033[1D")
-                # 重绘后面的字符并清除行尾
-                _redraw_from_cursor()
+        CSI 结构为 ``\\x1b[`` + 参数字节 + 最终字节（0x40..0x7E）。不能把
+        引入字节 ``[``（0x5B）当成最终字节，否则括号粘贴标记 ``\\x1b[200~``
+        会被截成 ``\\x1b[``，``200~`` 泄漏进正文。
+        """
+        deadline = time.monotonic() + 0.05
 
-        elif ch in ("\x00", "\xe0"):
-            # 扩展键序列（方向键、Home/End 等）
-            second = msvcrt.getwch()
-            if second == "K":  # ← 左箭头
-                if cursor_pos > 0:
-                    cursor_pos -= 1
-                    sys.stdout.write("\033[1D")
-                    sys.stdout.flush()
-            elif second == "M":  # → 右箭头
-                if cursor_pos < len(current_line):
-                    cursor_pos += 1
-                    sys.stdout.write("\033[1C")
-                    sys.stdout.flush()
-            elif second == "H":  # Home
-                if cursor_pos > 0:
-                    sys.stdout.write(f"\033[{cursor_pos}D")
-                    cursor_pos = 0
-                    sys.stdout.flush()
-            elif second == "O":  # End
-                if cursor_pos < len(current_line):
-                    sys.stdout.write(f"\033[{len(current_line) - cursor_pos}C")
-                    cursor_pos = len(current_line)
-                    sys.stdout.flush()
-            elif second == "S":  # Delete
-                if cursor_pos < len(current_line):
-                    current_line.pop(cursor_pos)
-                    _redraw_from_cursor()
-            elif second == "\x0f":  # Shift+Tab
-                self._handle_shift_tab()
-                # 不向 current_line 插入任何字符
+        def _poll_next() -> str | None:
+            while time.monotonic() < deadline:
+                if kbhit():
+                    return msvcrt.getwch()
+                time.sleep(0.001)
+            return None
 
-        elif ch and ord(ch) >= 0x20:
-            # 可见字符：在光标位置插入
-            if cursor_pos >= len(current_line):
-                # 追加到末尾（常见情况，快速路径）
-                current_line.append(ch)
-                sys.stdout.write(ch)
-                sys.stdout.flush()
-            else:
-                # 插入到中间位置
-                current_line.insert(cursor_pos, ch)
-                # 重绘插入点之后的内容
-                _redraw_from_cursor()
+        seq = "\x1b"
+        second = _poll_next()
+        if second is None:
+            return seq  # 孤立 ESC
+        seq += second
+        if second == "[":  # CSI：参数/中间字节之后才是最终字节
+            while True:
+                c = _poll_next()
+                if c is None:
+                    break
+                seq += c
+                if 0x40 <= ord(c) <= 0x7E or len(seq) >= 16:
+                    break
+        elif second == "O":  # SS3：还有一个字节
+            c = _poll_next()
+            if c is not None:
+                seq += c
+        # 其余情况（ESC + 单字母）已完整
+        return seq
+
+    def _move_left() -> None:
+        nonlocal cursor_pos
+        if cursor_pos > 0:
+            cursor_pos -= 1
+            sys.stdout.write(f"\033[{_char_width(current_line[cursor_pos])}D")
+            sys.stdout.flush()
+
+    def _move_right() -> None:
+        nonlocal cursor_pos
+        if cursor_pos < len(current_line):
+            w = _char_width(current_line[cursor_pos])
             cursor_pos += 1
+            sys.stdout.write(f"\033[{w}C")
+            sys.stdout.flush()
+
+    def _move_home() -> None:
+        nonlocal cursor_pos
+        if cursor_pos > 0:
+            prefix = _display_width("".join(current_line[:cursor_pos]))
+            sys.stdout.write(f"\033[{prefix}D")
+            cursor_pos = 0
+            sys.stdout.flush()
+
+    def _move_end() -> None:
+        nonlocal cursor_pos
+        if cursor_pos < len(current_line):
+            suffix = _display_width("".join(current_line[cursor_pos:]))
+            sys.stdout.write(f"\033[{suffix}C")
+            cursor_pos = len(current_line)
+            sys.stdout.flush()
+
+    try:
+        while True:
+            ch = msvcrt.getwch()
+
+            # ── 括号粘贴：缓冲内容，遇结束标记一次性插入 ──
+            if paste_mode:
+                if ch == "\x1b":
+                    seq = _read_escape()
+                    if seq == "\x1b[201~":
+                        _finish_paste()
+                    else:
+                        paste_buffer.append(seq)  # 粘贴内容里的字面 ESC
+                elif ch == "\x03":  # 粘贴期间 Ctrl+C
+                    paste_mode = False
+                    paste_buffer = []
+                    sys.stdout.write("\n")
+                    raise KeyboardInterrupt
+                else:
+                    paste_buffer.append(ch)
+                continue
+
+            if ch in ("\r", "\n"):
+                if ch == "\n" and not current_line and not lines:
+                    # 泄漏的 LF（CRLF 粘贴的后半）或空行回车：静默忽略。
+                    # 不能用 kbhit()+getwch() 提前消费——kbhit() 对鼠标/窗口事件
+                    # 也为真，而 getwch() 只读按键事件，会在鼠标事件上永久阻塞。
+                    continue
+                if shift_held():
+                    if cursor_pos < len(current_line):
+                        sys.stdout.write(
+                            f"\033[{_display_width(''.join(current_line[cursor_pos:]))}C"
+                        )
+                        cursor_pos = len(current_line)
+                    lines.append("".join(current_line))
+                    current_line = []
+                    cursor_pos = 0
+                    sys.stdout.write("\n" + CONT)
+                    sys.stdout.flush()
+                else:
+                    if cursor_pos < len(current_line):
+                        sys.stdout.write(
+                            f"\033[{_display_width(''.join(current_line[cursor_pos:]))}C"
+                        )
+                    break
+
+            elif ch == "\x03":
+                raise KeyboardInterrupt
+
+            elif ch == "\x0f":  # Ctrl+O：展开/折叠最近一次执行详情
+                self._toggle_thinking_details()
+                _redraw_from_cursor()
+
+            elif ch in ("\x08", "\x7f"):
+                # Backspace：删除光标左侧字符，按字符宽度回退光标
+                if cursor_pos > 0:
+                    deleted = current_line.pop(cursor_pos - 1)
+                    cursor_pos -= 1
+                    sys.stdout.write(f"\033[{_char_width(deleted)}D")
+                    _redraw_from_cursor()
+
+            elif ch == "\x1b":
+                seq = _read_escape()
+                if seq == "\x1b[200~":
+                    paste_mode = True
+                    paste_buffer = []
+                elif seq in ("\x1b[A", "\x1b[B"):  # 上/下：忽略
+                    pass
+                elif seq == "\x1b[C":
+                    _move_right()
+                elif seq == "\x1b[D":
+                    _move_left()
+                elif seq in ("\x1b[H", "\x1b[1~", "\x1bOH"):
+                    _move_home()
+                elif seq in ("\x1b[F", "\x1b[4~", "\x1bOF"):
+                    _move_end()
+                elif seq == "\x1b[3~":  # Delete
+                    if cursor_pos < len(current_line):
+                        current_line.pop(cursor_pos)
+                        _redraw_from_cursor()
+                elif seq == "\x1b[Z":  # Shift+Tab
+                    self._handle_shift_tab()
+                # 其他未知 ESC 序列静默丢弃
+
+            elif ch in ("\x00", "\xe0"):
+                # 扩展键（VT 输入未生效时的兜底）：前缀 + 扫描码。
+                # kbhit 守卫：孤立的 0x00/0xe0（如粘贴内容里的 U+00E0）不阻塞。
+                if not kbhit():
+                    continue
+                second = msvcrt.getwch()
+                if second == "K":
+                    _move_left()
+                elif second == "M":
+                    _move_right()
+                elif second == "G":
+                    _move_home()
+                elif second == "O":
+                    _move_end()
+                elif second == "S":  # Delete
+                    if cursor_pos < len(current_line):
+                        current_line.pop(cursor_pos)
+                        _redraw_from_cursor()
+                elif second == "\x0f":  # Shift+Tab
+                    self._handle_shift_tab()
+
+            elif ch and ord(ch) >= 0x20:
+                # 可见字符：在光标位置插入
+                if cursor_pos >= len(current_line):
+                    current_line.append(ch)
+                    sys.stdout.write(ch)
+                    sys.stdout.flush()
+                else:
+                    current_line.insert(cursor_pos, ch)
+                    _redraw_from_cursor()
+                    # 重绘后光标回到插入点，前移一位越过刚插入的字符。
+                    sys.stdout.write(f"\033[{_char_width(ch)}C")
+                    sys.stdout.flush()
+                cursor_pos += 1
+
+    finally:
+        # 关闭括号粘贴模式。
+        sys.stdout.write("\033[?2004l")
+        sys.stdout.flush()
+        # 恢复行输入 + 回显（供 Python ``input()`` 和 rich ``Prompt.ask`` 使用——
+        # 它们依赖 ENABLE_LINE_INPUT/ECHO_INPUT，若一直留在原始模式，/set_model
+        # 等交互命令会读不到输入），但保持快速编辑与鼠标输入关闭，避免点选冻结
+        # 与鼠标事件污染输入队列。VT_INPUT 也一并清掉，交还给行输入路径。
+        if orig_in_mode is not None:
+            restore = orig_in_mode & ~(
+                ENABLE_QUICK_EDIT_MODE | ENABLE_MOUSE_INPUT | ENABLE_VIRTUAL_TERMINAL_INPUT
+            )
+            kernel32.SetConsoleMode(hin, restore)
 
     if current_line:
         lines.append("".join(current_line))
 
     result = "\n".join(lines)
     sys.stdout.write("\n")
-    return result.strip()
+    return result.rstrip("\r\n")
 
 
 def _read_input_unix(self) -> str:

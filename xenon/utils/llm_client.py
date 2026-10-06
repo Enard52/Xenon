@@ -102,7 +102,25 @@ def _apply_reasoning_effort(
 
 
 class ResponseTruncatedError(RuntimeError):
-    """LLM 响应因 max_tokens 上限被截断，且续写次数耗尽仍不完整。"""
+    """LLM 响应因 max_tokens 上限被截断，且续写次数耗尽仍不完整。
+
+    ``partial_content`` 保留已经从 provider 收到的可见文本。调用方可以
+    在无法继续时把这部分内容交付给用户，而不是因为异常路径把整段输出
+    静默丢掉。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        partial_content: str = "",
+        model_id: str = "",
+        finish_reason: str = "length",
+    ) -> None:
+        super().__init__(message)
+        self.partial_content = partial_content
+        self.model_id = model_id
+        self.finish_reason = finish_reason
 
 
 # ── §8.8.1：真实 token / 延迟统计（usage 不再丢弃）──────────────
@@ -972,7 +990,9 @@ def _call_openai_compat(
                 return repaired
             raise ResponseTruncatedError(
                 f"API 响应在 {MAX_CONTINUATIONS} 次续写后仍被截断 "
-                f"(finish_reason=length)，内容可能不完整；请增大 max_tokens 或精简输入。"
+                f"(finish_reason=length)，内容可能不完整；请增大 max_tokens 或精简输入。",
+                partial_content=combined,
+                model_id=f"{endpoint.provider}/{endpoint.model_name}",
             )
         attempts += 1
         kind = _structured_response_kind(combined)
@@ -1166,7 +1186,9 @@ def _call_anthropic(
         if attempts >= MAX_CONTINUATIONS:
             raise ResponseTruncatedError(
                 f"Anthropic 响应在 {MAX_CONTINUATIONS} 次续写后仍被截断 "
-                f"(stop_reason=max_tokens)，内容可能不完整；请增大 max_tokens 或精简输入。"
+                f"(stop_reason=max_tokens)，内容可能不完整；请增大 max_tokens 或精简输入。",
+                partial_content="".join(parts),
+                model_id=f"{endpoint.provider}/{endpoint.model_name}",
             )
         attempts += 1
         logger.info("Anthropic 响应被截断 (stop_reason=max_tokens)，自动续写…")
@@ -1905,7 +1927,9 @@ def _stream_openai_compat(
             raise ResponseTruncatedError(
                 f"流式 API 响应在 {MAX_CONTINUATIONS} 次续写后仍被截断 "
                 f"(finish_reason=length)，内容可能不完整；请增大 max_tokens "
-                "或精简输入。"
+                "或精简输入。",
+                partial_content=accumulated,
+                model_id=model_id,
             )
 
         attempts += 1
@@ -2127,5 +2151,7 @@ def _stream_anthropic(
     if stop_reason == "max_tokens":
         raise ResponseTruncatedError(
             "Anthropic 流式响应因 stop_reason=max_tokens 被截断，"
-            "已拒绝把残缺内容当作完整回答"
+            "已拒绝把残缺内容当作完整回答",
+            partial_content=accumulated_content,
+            model_id=model_id,
         )

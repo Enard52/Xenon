@@ -2,7 +2,7 @@
 P0-Critical: Token 计算修复专项测试。
 
 验证内容：
-1. _estimate_tokens() 真正集成 tiktoken
+1. _estimate_tokens() 使用纯启发式估算（不再依赖 tiktoken）
 2. _subscribe_usage() 成功后有 debug 日志
 3. _on_usage() 有详细 debug 日志输出所有字段
 4. cumulative_tokens 正确累加
@@ -18,50 +18,18 @@ from unittest.mock import MagicMock, patch
 from xenon.repl.context_manager import ContextManager, _estimate_tokens
 
 
-class TestTiktokenIntegration:
-    """测试 tiktoken 集成。"""
+class TestEstimateTokens:
+    """测试纯启发式 token 估算。"""
 
-    def test_estimate_tokens_uses_tiktoken_when_available(self, caplog):
-        """验证 _estimate_tokens 优先使用 tiktoken。"""
-        caplog.set_level(logging.DEBUG)
+    def test_estimate_tokens_empty_and_cjk(self):
+        assert _estimate_tokens("") == 0
+        # 中文按 2 token/字，且不低于 len//2 下界
+        assert _estimate_tokens("你好") >= 1
+        assert _estimate_tokens("你好世界") >= 4
 
-        text = "Hello, world! This is a test."
-
-        # Mock tiktoken at the import level inside _estimate_tokens
-        mock_enc = MagicMock()
-        mock_enc.encode.return_value = [1, 2, 3, 4, 5, 6, 7]  # 7 tokens
-
-        mock_tiktoken = MagicMock()
-        mock_tiktoken.get_encoding.return_value = mock_enc
-
-        with patch.dict("sys.modules", {"tiktoken": mock_tiktoken}):
-            result = _estimate_tokens(text)
-
-            # 验证调用了 tiktoken
-            mock_tiktoken.get_encoding.assert_called_once_with("cl100k_base")
-            mock_enc.encode.assert_called_once_with(text)
-            assert result == 7
-
-            # 不应该有 fallback 日志
-            assert "tiktoken 计算失败" not in caplog.text
-
-    def test_estimate_tokens_fallback_on_tiktoken_failure(self, caplog):
-        """验证 tiktoken 失败时回退到启发式估算。"""
-        caplog.set_level(logging.DEBUG)
-
-        text = "Hello world"
-
-        # Mock tiktoken to raise an error
-        mock_tiktoken = MagicMock()
-        mock_tiktoken.get_encoding.side_effect = ImportError("tiktoken not found")
-
-        with patch.dict("sys.modules", {"tiktoken": mock_tiktoken}):
-            result = _estimate_tokens(text)
-
-            # 应该有 fallback 日志
-            assert "tiktoken 计算失败，回退启发式估算" in caplog.text
-            # 启发式估算应该返回合理值（不为 0）
-            assert result > 0
+    def test_estimate_tokens_english_words(self):
+        assert _estimate_tokens("hello world") > 0
+        assert _estimate_tokens("hello world foo bar") >= 4
 
 
 class TestUsageCallbackLogs:

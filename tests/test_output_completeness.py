@@ -8,6 +8,7 @@ from xenon.engine.react_engine import ReActEngine, _answer_looks_incomplete
 from xenon.repl.context_manager import ContextManager
 from xenon.repl.model_registry import ModelRegistry
 from xenon.repl.repl import REPL
+from xenon.utils.llm_client import ResponseTruncatedError
 
 
 def test_detects_screenshot_style_mid_sentence_answer():
@@ -152,3 +153,20 @@ def test_direct_streaming_uses_complete_model_request_config(monkeypatch):
     assert captured["credentials"] == {"openai": "sk-private"}
     assert captured["base_url"] == "https://relay.example/v1"
     assert captured["reasoning_effort"] == "max"
+
+
+def test_direct_streaming_keeps_visible_prefix_after_truncation(monkeypatch):
+    """A bounded continuation failure must not erase already yielded text."""
+
+    def fake_stream(*args, **kwargs):
+        yield "已经生成的前半段"
+        raise ResponseTruncatedError(
+            "truncated", partial_content="已经生成的前半段"
+        )
+
+    monkeypatch.setattr("xenon.utils.llm_client.chat_completion_stream", fake_stream)
+    repl = REPL(streaming=True)
+
+    assert repl._stream_response("openai/test", [{"role": "user", "content": "hi"}]) == (
+        "已经生成的前半段"
+    )

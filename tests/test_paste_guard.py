@@ -37,6 +37,7 @@ def _force_stuck(parser) -> None:
 class _Reader:
     def __init__(self, parser) -> None:
         self._vt100_parser = parser
+        self._buffer = []
 
 
 class _Input:
@@ -95,8 +96,10 @@ def test_reset_stuck_paste() -> None:
     assert reset_stuck_paste(session) is False  # not stuck yet
     assert reset_stuck_paste(object()) is False  # nothing to introspect
     _force_stuck(parser)
+    session.app.input.console_input_reader._buffer.extend(["stale"])
     assert reset_stuck_paste(session) is True
     assert parser._in_bracketed_paste is False
+    assert session.app.input.console_input_reader._buffer == []
 
 
 def test_feed_timestamp_tracks_and_is_idempotent() -> None:

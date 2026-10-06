@@ -1705,11 +1705,20 @@ class REPL:
             raise KeyboardInterrupt
         except EOFError:
             raise KeyboardInterrupt
+        finally:
+            # A terminal can drop the bracketed-paste end marker while the
+            # prompt is active. Clean up even when prompt() exits by
+            # interrupt/EOF so the next turn never inherits a wedged parser.
+            reset_stuck_paste(self._pt_session)
 
         # Strip only editor whitespace around the visible value, then restore
         # paste blocks.  Leading/trailing whitespace *inside* a pasted block is
         # therefore preserved exactly.
-        return self._paste_store.expand(text.strip())
+        # prompt_toolkit has already removed the submit key. Do not call
+        # ``strip()`` here: leading/trailing spaces can be intentional and
+        # stripping them makes editing/paste round-trips appear to insert or
+        # delete spaces unexpectedly.
+        return self._paste_store.expand(text.rstrip("\r\n"))
 
     def _classify_slash_input(self, raw: str) -> str:
         """规则 + LLM 校验：判断以 / 开头的输入是命令还是普通对话。
@@ -2838,18 +2847,37 @@ class REPL:
             )
 
         # 流式阶段：显示 spinner + 实时 token 计数
-        with Live(
-            Spinner("dots", text="[dim]思考中…[/dim]"),
-            console=console,
-            refresh_per_second=10,
-            transient=True,  # 结束后自动清除 spinner
-        ) as live:
-            for chunk in chat_completion_stream(model_id, messages, **request_options):
-                full_response.append(chunk)
-                token_count = len("".join(full_response))
-                live.update(
-                    Spinner("dots", text=f"[dim]生成中… {token_count} tokens[/dim]")
-                )
+        try:
+            with Live(
+                Spinner("dots", text="[dim]思考中…[/dim]"),
+                console=console,
+                refresh_per_second=10,
+                transient=True,  # 结束后自动清除 spinner
+            ) as live:
+                for chunk in chat_completion_stream(
+                    model_id, messages, **request_options
+                ):
+                    full_response.append(chunk)
+                    token_count = len("".join(full_response))
+                    live.update(
+                        Spinner("dots", text=f"[dim]生成中… {token_count} tokens[/dim]")
+                    )
+        except Exception as exc:
+            # The stream may have yielded many visible chunks before bounded
+            # continuation retries are exhausted. Preserve that output for
+            # delivery instead of falling through the model-failure path and
+            # showing nothing to the user.
+            from xenon.utils.llm_client import ResponseTruncatedError
+
+            if isinstance(exc, ResponseTruncatedError):
+                partial = exc.partial_content or "".join(full_response)
+                if partial.strip():
+                    console.print(
+                        "[yellow]⚠ 模型输出达到长度上限，已显示已生成内容；"
+                        "可继续发送“继续”完成剩余部分。[/yellow]"
+                    )
+                    return partial
+            raise
 
         response_text = "".join(full_response)
 
@@ -2885,9 +2913,18 @@ class REPL:
             logger.warning(
                 "模型 %s 未找到运行时配置，生成预算将使用上游默认值", model_id
             )
-        response = chat_completion(model_id, messages, **request_options)
+        try:
+            return chat_completion(model_id, messages, **request_options)
+        except Exception as exc:
+            from xenon.utils.llm_client import ResponseTruncatedError
 
-        return response
+            if isinstance(exc, ResponseTruncatedError) and exc.partial_content.strip():
+                console.print(
+                    "[yellow]⚠ 模型输出达到长度上限，已显示已生成内容；"
+                    "可继续发送“继续”完成剩余部分。[/yellow]"
+                )
+                return exc.partial_content
+            raise
 
     @staticmethod
     def _detect_intent(text: str) -> str | None:

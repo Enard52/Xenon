@@ -44,9 +44,8 @@ _CJK_RE = re.compile(
 def _estimate_tokens(text: str) -> int:
     """估算 token 数（模块级，供 ``ConversationTurn`` 缓存与 ``ContextManager`` 共用）。
 
-    优先使用 tiktoken 进行精确计算，失败时回退到启发式估算。
+    纯启发式估算，不依赖 tiktoken（避免为状态栏显示引入重型依赖）：
 
-    启发式规则：
     - CJK 字符（含扩展 A/兼容/假名/韩文）约 2 token/字；
     - 英文约 1.3 token/word；
     - 代码/JSON 密集按 0.4×chars；
@@ -54,16 +53,6 @@ def _estimate_tokens(text: str) -> int:
     """
     if not text:
         return 0
-
-    # 尝试使用 tiktoken 进行精确计算
-    try:
-        import tiktoken
-
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception as e:
-        # tiktoken 失败，回退到启发式估算
-        logger.debug("tiktoken 计算失败，回退启发式估算: %s", e)
 
     # 启发式估算
     cjk_count = len(_CJK_RE.findall(text))

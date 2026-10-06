@@ -59,6 +59,16 @@ def find_vt_parser(session: Any) -> Any:
         return None
 
 
+def _console_reader(session: Any) -> Any:
+    """Return the Win32 reader that owns the parser and pending key buffer."""
+    try:
+        app = _session_app(session)
+        inp = getattr(app, "input", None)
+        return getattr(inp, "console_input_reader", None)
+    except Exception:
+        return None
+
+
 def _install_feed_timestamp(parser: Any) -> bool:
     """在解析器的 ``feed`` 上记录“最近一次收到字节”的时间（幂等）。"""
     try:
@@ -89,6 +99,10 @@ def reset_stuck_paste(session: Any) -> bool:
             return False
         if getattr(parser, "_in_bracketed_paste", False):
             parser.reset()
+            reader = _console_reader(session)
+            pending = getattr(reader, "_buffer", None)
+            if isinstance(pending, list):
+                pending.clear()
             logger.warning("检测到粘贴状态卡死（结束标记丢失），已自动恢复输入。")
             return True
         return False
@@ -135,6 +149,10 @@ def arm_paste_watchdog(
                                     and monotonic() - last > idle_timeout
                                 ):
                                     parser.reset()
+                                    reader = _console_reader(session)
+                                    pending = getattr(reader, "_buffer", None)
+                                    if isinstance(pending, list):
+                                        pending.clear()
                                     logger.warning(
                                         "粘贴已空闲 %.2fs 仍未收到结束标记，"
                                         "已自动结束粘贴并恢复输入。",
