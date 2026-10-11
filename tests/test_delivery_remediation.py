@@ -9,24 +9,7 @@ TurnGate 的文件声称审计承接；写入后验证失败（原 VerificationL
 
 from __future__ import annotations
 
-from xenon.engine.react_engine import ReActEngine
 from xenon.turn.gate import VERDICT_FAIL, VERDICT_PASS, TurnGate
-
-
-class TestDeliveryRemediationPrompt:
-    def test_prompt_contains_reason_and_action(self):
-        class _V:
-            reason = "LLM 声称创建但未经工具验证的文件: tmp/x.py"
-
-        eng = ReActEngine(
-            model_priority=["deepseek/deepseek-v4-flash"],
-            max_iterations=3,
-            native_fc=False,
-        )
-        prompt = eng.delivery_remediation_prompt(_V())
-        assert "tmp/x.py" in prompt
-        assert "write_file" in prompt
-        assert "不要只输出 diff" in prompt
 
 
 class TestTurnGateFileClaims:

@@ -11,7 +11,6 @@
 奖励机制（规范 Q2 核心，"软预算"）：良好行为换额外轮次——
 
 - ``on_compression()``：上下文被压缩（省 token）→ +N 轮；
-- ``on_hollow_answer()``：检测到空洞回答 → +N 轮（给机会补救，而非直接判失败）。
 - ``on_retry()``：模型协议/格式需要重试 → +N 轮，避免重试直接撞上固定预算。
 
 ``bonus`` 只扩展 ``can_continue()`` 上限，**不改变阶段边界**（CONVERGE 仍按 base
@@ -64,8 +63,6 @@ class BudgetManager:
             ...
             if compressed:
                 budget.on_compression()
-            if hollow_detector.is_hollow(answer):
-                budget.on_hollow_answer()
             allow, reason = budget.allow_tool(action)
             if not allow:
                 # 注入 reason 作为 observation，不执行
@@ -76,7 +73,6 @@ class BudgetManager:
     bonus: int = 0
     # 奖励配额（默认值，可覆盖）
     compression_reward: int = 2
-    hollow_reward: int = 3
     retry_reward: int = 1
     # 阶段边界（占 base max 的比例）
     explore_ratio: float = 0.25
@@ -150,16 +146,6 @@ class BudgetManager:
         """
         reward = self.compression_reward if n is None else max(0, n)
         return self._grant("compression", reward)
-
-    def on_hollow_answer(self, n: int | None = None) -> int:
-        """空洞回答奖励：+N 轮给机会补救（默认 ``hollow_reward``）。
-
-        检测到空洞回答时，软预算给额外轮次让 LLM 重试产出具体内容，
-        而非立即判失败/截断——契合规范 Q2 的"奖励良好行为"哲学
-        （补救本身是良好行为，值得给资源）。
-        """
-        reward = self.hollow_reward if n is None else max(0, n)
-        return self._grant("hollow", reward)
 
     def on_retry(self, n: int | None = None) -> int:
         """协议格式重试奖励：为一次可恢复的模型输出错误增加预算。

@@ -526,6 +526,8 @@ class ReActEngine(BaseEngine):
             logger.debug(f"ReAct 迭代 {iteration}/{budget.total}")
 
             # P2: 预算检查点——窗口耗尽时的唯一终止仲裁（固定步数不终止）。
+            # 无进展管线两级：LoopDetector（953 行附近）在窗口内检测输出哈希
+            # 重复的紧环并提前熔断；本检查点在窗口边界判定窗口级无进展。
             # 注意：条件用 > 而非 >= ——窗口含 N 步，第 N+1 步顶部才询问，
             # 避免首轮（spent=1）在极小窗口（checkpoint_steps=1）下误触发。
             if checkpoint_enabled and budget.spent > next_checkpoint:

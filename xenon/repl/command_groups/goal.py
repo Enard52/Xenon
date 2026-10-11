@@ -35,6 +35,8 @@ def _cmd_goal(*, session_state: dict, **kwargs: Any) -> str:
         lines.append(f"⏸ 待确认动作：{pending.reason}")
     if view.open_gates:
         lines.append(f"📋 打开的门：{len(view.open_gates)}")
-    if view.artifacts:
-        lines.append(f"📄 已知产物：{len(view.artifacts)}（最近 {view.artifacts[-1].path}）")
+    # R4 收尾：产物单一来源——树尾节点（事件投影只提供目标/门）。
+    artifacts = getattr(getattr(repl, "_turn_tree", None), "tail", lambda: None)().artifacts
+    if artifacts:
+        lines.append(f"📄 已知产物：{len(artifacts)}（最近 {artifacts[-1]}）")
     return "\n".join(lines)

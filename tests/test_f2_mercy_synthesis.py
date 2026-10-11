@@ -135,11 +135,11 @@ class TestSynthesisInjection:
         r = self.eng._inject_synthesis_prompt(b, tracker)
         assert r[0] == "gentle_hint"
 
-    def test_skip_after_hollow_reward(self):
-        """刚奖励过空洞补救 → 跳过注入（hint 已在）避免连续 user 消息堆叠。"""
+    def test_skip_after_retry_reward(self):
+        """刚奖励过重试补救 → 跳过注入（hint 已在）避免连续 user 消息堆叠。"""
         b = BudgetManager(max_iterations=10)
         b.spend(1)
-        b.on_hollow_answer()
+        b.on_retry()
         tracker = ToolExecutionTracker()
         r = self.eng._inject_synthesis_prompt(b, tracker)
         assert r is None

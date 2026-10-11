@@ -341,41 +341,6 @@ class BaseEngine(ABC):
         )
         return EvidencePack.build(ledger)
 
-    def delivery_gate_verdict(
-        self,
-        *,
-        context: AgentContext | None = None,
-        output: str = "",
-        tracker: Any = None,
-        workspace_root: Any = None,
-    ) -> Any:
-        """只做交付闸门判定（不 raise），供引擎补救循环预检。
-
-        与 ``finalize_evidence`` 共享同一 Gate 管线（fix + output 两个 phase），
-        但失败时返回 verdict 而非抛异常——让引擎有机会注入补救提示、
-        再迭代一轮、再验证。这是「贴 diff 不落盘」的根因修复：拦截
-        不是终点，拦截结果要反馈回 LLM。
-        """
-        ctx = context or AgentContext()
-        ledger = self.evidence_ledger or ctx.get("_evidence_ledger")
-        if ledger is None:
-            raise RuntimeError("evidence ledger is not bound to this task")
-        for phase, kwargs in (
-            ("fix", {"tracker": tracker}),
-            (
-                "output",
-                {
-                    "output": output,
-                    "tracker": tracker,
-                    "workspace_root": workspace_root,
-                },
-            ),
-        ):
-            verdict = self.gate_failed(phase, ctx, **kwargs)
-            if verdict is not None:
-                return verdict
-        return None
-
     def delivery_remediation_prompt(self, verdict: Any) -> str:
         """把交付闸门拦截转成补救指令（单一真相源，供各引擎注入）。
 
@@ -1751,8 +1716,8 @@ class BaseEngine(ABC):
                 "不要再调用工具，直接总结产物（文件路径/代码/命令输出）。",
             )
 
-        # 2. 刚奖励过空洞补救：hint 已作为上一条 user 消息注入，跳过避免堆叠
-        if budget.rewards and budget.rewards[-1][0] == "hollow":
+        # 2. 刚奖励过协议重试：hint 已作为上一条 user 消息注入，跳过避免堆叠
+        if budget.rewards and budget.rewards[-1][0] == "retry":
             return None
 
         # 3. 收束阶段且有工具：准备合成

@@ -60,9 +60,9 @@ class TestPhases:
 
     def test_phase_boundary_uses_base_not_bonus(self):
         """阶段边界基于 base 比例，bonus 不改变 CONVERGE 触发时机。"""
-        b = BudgetManager(max_iterations=10, hollow_reward=5)
+        b = BudgetManager(max_iterations=10, retry_reward=5)
         b.spend(2)
-        b.on_hollow_answer()  # bonus +5 → total 15
+        b.on_retry()  # bonus +5 → total 15
         assert b.total == 15
         b.spend(6)  # spent=8, base ratio 80% → CONVERGE
         assert b.is_converge_phase() is True
@@ -83,12 +83,6 @@ class TestRewards:
         assert b.total == 12
         assert b.rewards == [("compression", 2)]
 
-    def test_on_hollow_answer_adds_default(self):
-        b = BudgetManager(max_iterations=10)
-        b.on_hollow_answer()
-        assert b.bonus == 3
-        assert b.rewards == [("hollow", 3)]
-
     def test_on_retry_adds_default_and_records_reason(self):
         b = BudgetManager(max_iterations=10)
         b.on_retry()
@@ -105,9 +99,9 @@ class TestRewards:
     def test_reward_custom_n(self):
         b = BudgetManager(max_iterations=10)
         b.on_compression(5)
-        b.on_hollow_answer(1)
+        b.on_retry(1)
         assert b.bonus == 6
-        assert b.rewards == [("compression", 5), ("hollow", 1)]
+        assert b.rewards == [("compression", 5), ("retry", 1)]
 
     def test_reward_zero_noop(self):
         b = BudgetManager(max_iterations=10)
@@ -126,15 +120,15 @@ class TestRewards:
         b.on_compression(10)  # 满到 cap=20
         assert b.bonus == 10
         assert b.total == 20
-        b.on_hollow_answer(5)  # 已达封顶，拒绝
+        b.on_retry(5)  # 已达封顶，拒绝
         assert b.bonus == 10  # 不变
-        assert b.rewards[-1] == ("hollow", 0)  # 记录尝试但发放 0
+        assert b.rewards[-1] == ("retry", 0)  # 记录尝试但发放 0
 
     def test_reward_extends_can_continue(self):
         b = BudgetManager(max_iterations=3)
         b.spend(3)
         assert b.can_continue() is False
-        b.on_hollow_answer(2)
+        b.on_retry(2)
         assert b.total == 5
         assert b.can_continue() is True
 
