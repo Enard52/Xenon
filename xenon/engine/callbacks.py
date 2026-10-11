@@ -244,10 +244,11 @@ class ThinkingPanel:
         self.steps.append(step)
         self._awaiting_observations.append(step)
 
-    def add_observation(self, observation: str) -> ThinkingStep:
+    def add_observation(self, observation: str, success: bool | None = None) -> ThinkingStep:
         """记录一次观察结果，并完成当前步骤。
 
-        v0.6.1: 自动检测 observation 中的错误关键词，设置 is_error 标记。
+        成功与否优先取调用方给出的结构化标记（单一语义通道，来自工具回执）；
+        只有合成观察文本（引擎自制提示）才用关键词探测兜底。
         """
         if self._awaiting_observations:
             step = self._awaiting_observations.popleft()
@@ -259,9 +260,16 @@ class ThinkingPanel:
             self._pending_thought = ""
             self.steps.append(step)
         step.observation = observation
-        # 自动检测错误
-        obs_lower = observation.lower()
-        step.is_error = any(kw.lower() in obs_lower for kw in self._ERROR_KEYWORDS)
+        if success is None and isinstance(observation, str) and hasattr(
+            observation, "success"
+        ):
+            success = observation.success
+        if success is None:
+            # 合成观察文本兜底：关键词探测（仅限无工具回执的路径）。
+            obs_lower = str(observation).lower()
+            step.is_error = any(kw.lower() in obs_lower for kw in self._ERROR_KEYWORDS)
+        else:
+            step.is_error = not success
         return step
 
     def finalize(self) -> None:
@@ -551,23 +559,8 @@ class ConsoleCallback(EngineCallback):
         self._stop_progress(step.action)
         brief = self._brief_observation(observation)
         if self.verbose and brief:
-            # 根据内容判断成功/失败
-            is_error = any(
-                kw in brief.lower()
-                for kw in (
-                    "错误",
-                    "error",
-                    "失败",
-                    "fail",
-                    "不存在",
-                    "not found",
-                    "拒绝",
-                    "denied",
-                    "超时",
-                    "timeout",
-                )
-            )
-            marker = "  ✗" if is_error else "   ✓"
+            # 单一语义通道：与面板同源（add_observation 的结构化判定）。
+            marker = "  ✗" if step.is_error else "   ✓"
             print(f"{marker} {brief}")
         if self.verbose:
             obs_preview = observation[:300].replace("\n", " ")

@@ -267,6 +267,48 @@ def test_github_rate_limit_falls_back_to_public_html(monkeypatch):
     assert "Public README" in result["content"]
 
 
+def test_fetch_issue_without_number_lists_open_issues(monkeypatch):
+    """回归：repo/issues 无编号 → 列 open issues 概览（旧实现无情报错）。"""
+
+    client = FakeClient(
+        [
+            FakeResponse(
+                [
+                    {
+                        "number": 90,
+                        "title": "智能路由路线图",
+                        "state": "open",
+                        "comments": 3,
+                        "labels": [{"name": "P2"}],
+                        "created_at": "2026-08-01T00:00:00Z",
+                    },
+                    {
+                        "number": 91,
+                        "title": "讨论",
+                        "state": "open",
+                        "comments": 0,
+                        "labels": [],
+                        "created_at": "2026-08-02T00:00:00Z",
+                        "pull_request": {},
+                    },
+                ]
+            )
+        ]
+    )
+    monkeypatch.setattr(tool_module, "_create_http_client", lambda **kwargs: client)
+
+    result = ToolNode(
+        "gh",
+        action_type="github_fetch",
+        repo="https://github.com/owner/repo/issues",
+        github_action="fetch_issue",
+    ).execute(AgentContext())
+
+    assert result["success"] is True
+    assert "#90 智能路由路线图" in result["content"]
+    assert "owner/repo/issues/{编号}" in result["content"]
+
+
 def test_repo_activity_returns_comparable_maintenance_signals(monkeypatch):
     client = FakeClient(
         [

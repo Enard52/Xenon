@@ -336,6 +336,24 @@ def recover_tool_execution_checkpoint(context: AgentContext) -> str:
 
 
 # ── 结果封装 ───────────────────────────────────────────────
+class _ToolObservation(str):
+    """观察文本 + 结构化成功标记（单一语义通道）。
+
+    成功与否只由工具回执的 ``success`` 字段决定，下游不再用关键词猜。
+    str 子类保证所有拼接/切片/渲染代码无需改动。
+    """
+
+    def __new__(
+        cls, text: str, success: bool = True, degraded: bool = False
+    ) -> "_ToolObservation":
+        # success/degraded 非 keyword-only：copy.deepcopy 的 __newobj__
+        # 只传 (cls, text)，随后用 __dict__ 恢复真实标记。
+        obj = super().__new__(cls, text)
+        obj.success = success  # type: ignore[attr-defined]
+        obj.degraded = degraded  # type: ignore[attr-defined]
+        return obj
+
+
 @dataclass
 class ToolExecuteResult:
     """工具执行结果——observation/notification/next_hint 三视图。"""
@@ -384,8 +402,12 @@ class ToolExecuteResult:
             self.structured = ToolResult.from_raw(self.tool_name, raw)
 
     def format_observation(self) -> str:
-        """供引擎回填给 LLM 的观察文本。"""
-        return self.observation
+        """供引擎回填给 LLM 的观察文本（携带结构化 success/degraded）。"""
+        return _ToolObservation(
+            self.observation,
+            success=self.success,
+            degraded=bool((self.raw or {}).get("degraded")),
+        )
 
     def next_hint(self) -> str:
         """按失败原因给情境化下一步提示。"""

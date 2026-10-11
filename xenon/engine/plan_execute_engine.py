@@ -1182,6 +1182,17 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
                     )
                     tool_outcome = self._step_outcome(raw_observation)
                     observation = tool_outcome.content
+                    # 单一语义通道：携带工具回执的结构化成功标记。
+                    if isinstance(raw_observation, ToolExecuteResult):
+                        from xenon.nodes.tool_executor import _ToolObservation
+
+                        observation = _ToolObservation(
+                            observation,
+                            success=raw_observation.success,
+                            degraded=bool(
+                                (raw_observation.raw or {}).get("degraded")
+                            ),
+                        )
                     if not tool_outcome.success and isinstance(
                         raw_observation, ToolExecuteResult
                     ):

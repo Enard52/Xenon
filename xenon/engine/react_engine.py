@@ -869,8 +869,19 @@ class ReActEngine(BaseEngine):
                     # Previously only executed actions emitted observations;
                     # a blocked action shifted the FIFO and attached later
                     # results to the wrong tool in the Ctrl+O detail panel.
+                    # 单一语义通道：并行包装不丢失结构化 success/degraded 标记。
+                    from xenon.nodes.tool_executor import _ToolObservation
+
                     for action, obs in zip(raw_actions, tool_observations):
-                        self.callback.on_observe(f"[{action['action']}] {obs[:200]}...")
+                        if isinstance(obs, str) and hasattr(obs, "success"):
+                            wrapped = _ToolObservation(
+                                f"[{action['action']}] {str(obs)[:200]}...",
+                                success=obs.success,
+                                degraded=obs.degraded,
+                            )
+                        else:
+                            wrapped = f"[{action['action']}] {obs[:200]}..."
+                        self.callback.on_observe(wrapped)
                     observation = "\n\n".join(observations)
 
                 # PermissionGate marks the shared context when the user

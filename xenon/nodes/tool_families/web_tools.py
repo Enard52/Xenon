@@ -137,14 +137,22 @@ class WebToolsMixin:
                 "error": f"SSRF 拦截(重定向): {exc}",
             }
         except Exception as exc:
+            # 403/429 时给出可操作的限流提示（GitHub 未认证限额很低）。
+            hint = ""
+            status = getattr(exc, "response", None)
+            status_code = getattr(status, "status_code", None)
+            if status_code in {403, 429} and (
+                (urlparse(url).hostname or "") == "api.github.com"
+            ):
+                hint = "（GitHub API 限流：可设置 GITHUB_TOKEN 环境变量提升限额）"
             result = {
                 "action_type": "web_fetch",
                 "url": url,
                 "content": "",
                 "success": False,
-                "error": str(exc),
+                "error": f"{exc}{hint}",
             }
-            self._write_output(context, f"抓取失败: {exc}")
+            self._write_output(context, f"抓取失败: {exc}{hint}")
             return result
 
     def _docs_fetch(self, context: AgentContext) -> dict[str, Any]:

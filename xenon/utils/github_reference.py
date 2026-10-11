@@ -122,8 +122,6 @@ def parse_github_reference(value: str) -> GitHubReference:
         )
 
     if kind in {"issues", "pull", "pulls", "discussions"}:
-        if len(parts) < 4 or not parts[3].isdigit():
-            raise ValueError(f"GitHub {kind} URL 缺少有效编号")
         normalized = (
             "issue"
             if kind == "issues"
@@ -131,6 +129,11 @@ def parse_github_reference(value: str) -> GitHubReference:
             if kind in {"pull", "pulls"}
             else "discussion"
         )
+        if len(parts) == 3:
+            # 无编号 URL（如 repo/issues）→ 列表意图，由调用方列概览。
+            return GitHubReference(owner, repo, kind=normalized)
+        if not parts[3].isdigit():
+            raise ValueError(f"GitHub {kind} URL 缺少有效编号")
         return GitHubReference(
             owner,
             repo,

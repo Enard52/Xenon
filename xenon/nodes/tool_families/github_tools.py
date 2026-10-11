@@ -199,14 +199,11 @@ class GitHubToolsMixin:
                 if action in {"fetch_issue", "fetch_pull"}:
                     number = reference.number
                     if number is None:
-                        return {
-                            "action_type": "github_fetch",
-                            "repo": repo,
-                            "action": action,
-                            "content": "",
-                            "success": False,
-                            "error": f"{action} 需要 issues/pull URL 中的编号",
-                        }
+                        # 无编号 URL（如 repo/issues）→ 列出 open issues/PR 概览，
+                        # 而非无情报错；详情需再带编号调用。
+                        return self._github_list_discussions(
+                            client, context, repo, headers, action
+                        )
                     endpoint = "issues" if action == "fetch_issue" else "pulls"
                     api_url = f"https://api.github.com/repos/{repo}/{endpoint}/{number}"
                     resp = client.get(api_url, headers=headers)
@@ -290,6 +287,50 @@ class GitHubToolsMixin:
                 "retryable": False,
                 "error": f"GitHub 操作失败: {e}",
             }
+
+    def _github_list_discussions(
+        self,
+        client: Any,
+        context: AgentContext,
+        repo: str,
+        headers: dict[str, str],
+        action: str,
+    ) -> dict[str, Any]:
+        """无编号 issues/pull URL → 列最近 open 条目概览（详情再带编号调用）。"""
+        kind = "PRs" if action == "fetch_pull" else "issues"
+        api_url = (
+            f"https://api.github.com/repos/{repo}/issues"
+            "?state=open&per_page=10&sort=created&direction=desc"
+        )
+        resp = client.get(api_url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        items = [d for d in data if isinstance(d, dict)]
+        if action == "fetch_pull":
+            items = [d for d in items if "pull_request" in d]
+        lines = [f"# {repo} open {kind}（最近 {len(items)} 条）"]
+        for it in items:
+            labels = ", ".join(
+                lb["name"] for lb in (it.get("labels") or []) if isinstance(lb, dict)
+            )
+            lines.append(
+                f"- #{it.get('number')} {it.get('title', '')} "
+                f"| 状态: {it.get('state', '')} | 评论: {it.get('comments', 0)} "
+                f"| 标签: {labels or '-'} | 创建: {it.get('created_at', '')}"
+            )
+        lines.append(
+            f"\n查看详情: github_fetch repo='{repo}/issues/{{编号}}'"
+        )
+        content = "\n".join(lines)
+        self._write_output(context, content[:5000])
+        return {
+            "action_type": "github_fetch",
+            "repo": repo,
+            "action": action,
+            "content": content,
+            "count": len(items),
+            "success": True,
+        }
 
     def _github_repo_activity(
         self,
@@ -389,7 +430,9 @@ class GitHubToolsMixin:
         reason: str,
     ) -> dict[str, Any]:
         """Fall back to a public GitHub HTML page after API/network failure."""
-        if action == "fetch_issue" and reference.number is not None:
+        if action in {"fetch_issue", "fetch_pull"} and reference.number is None:
+            url = f"https://github.com/{repo}/issues"
+        elif action == "fetch_issue" and reference.number is not None:
             url = f"https://github.com/{repo}/issues/{reference.number}"
         elif action == "fetch_pull" and reference.number is not None:
             url = f"https://github.com/{repo}/pull/{reference.number}"
