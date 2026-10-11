@@ -397,64 +397,6 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
         if fix_verdict is not None:
             self.callback.on_warning(f"修复绑定校验: {fix_verdict.reason}")
 
-        # ── v0.8.2: 交付闸门补救循环 ──
-        # 贴 diff 不落盘（LLM 声称改/建文件但无写证据）是 SWE-bench 最大
-        # 失分点。预检交付闸门，失败且有预算时追加一轮「落盘补救」步骤，
-        # 让 LLM 真正执行写工具后再汇总交付——拦截不是终点。
-        # v0.8.3: 移除 max_steps 硬限制（与 _ensure_task_completed 同源修复：
-        # 侦察型计划吃满预算后补救曾被挡住，0 patch）。
-        pre_verdict = self.delivery_gate_verdict(
-            context=ctx,
-            output="",
-            tracker=tracker,
-        )
-        if pre_verdict is not None:
-            logger.warning(
-                "Plan-Execute: 交付闸门预检未通过（%s），追加落盘补救",
-                pre_verdict.reason[:80],
-            )
-            self.callback.on_warning(
-                f"交付校验预检未通过（{pre_verdict.reason[:60]}），"
-                "正在追加落盘补救执行…"
-            )
-            remediation_step = {
-                "id": len(results) + 1,
-                "task": (
-                    "【落盘补救】交付校验发现你声称修改/创建了文件，但工具执行"
-                    "记录中没有对应的写操作证据（校验原因："
-                    f"{pre_verdict.reason}）。请立即使用 write_file / edit_file "
-                    "/ batch_write 等工具真正把改动写入目标文件，写入后用 "
-                    "read_file 验证内容，确认无误后再给出最终总结。"
-                ),
-                "tool": None,
-                "params": {},
-                "depends_on": [],
-            }
-            step_id = remediation_step["id"]
-            prev_results = self._build_prev_results(results)
-            raw_result = self._execute_step_with_llm(
-                step_id,
-                total + 1,
-                remediation_step["task"],
-                prev_results,
-                user_input,
-                tracker,
-                context=ctx,
-                require_write_tool=True,
-            )
-            outcome = self._step_outcome(raw_result)
-            results.append(
-                {
-                    "step_id": step_id,
-                    "task": remediation_step["task"],
-                    "result": outcome.content,
-                    "status": "ok" if outcome.success else "failed",
-                    "error": outcome.error,
-                }
-            )
-            ctx.set(f"step_{step_id}_result", outcome.content)
-            ctx.set(f"step_{step_id}_status", "ok" if outcome.success else "failed")
-            self.callback.on_step_done(step_id, outcome.success, outcome.content[:200])
 
         # 汇总结果 — 附加工具执行摘要
         summary = self._summarize(

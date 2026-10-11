@@ -142,6 +142,11 @@ _CLAIM_PATTERNS = [
 _FILE_PATTERNS = [
     r"[\w.\-]+[/\\][\w./\\\-]+\.[A-Za-z0-9]+",
 ]
+# 版本号不是文件：3.10/3.11/3.12 这类纯数字点分段序列（Python 版本矩阵
+# 等）不应被视为路径声称。
+_VERSION_LIKE_PATH = re.compile(
+    r"^\d+(?:\.\d+)+(?:[/.]\d+(?:\.\d+)*)*$"
+)
 # 裸文件名声称：必须由声明动词开头（"创建了 docstring.py" / "saved models.py"），
 # 动词后可跟连接词延续的并列文件名（"已保存 A 和 B"）。无动词开头的裸名
 # （代码片段中的 self.c、foo.py 引用）不视为文件声称。
@@ -176,7 +181,10 @@ def _extract_claimed_files(llm_output: str) -> set[str]:
     mentioned: set[str] = set()
     for pattern in _FILE_PATTERNS:
         for m in re.findall(pattern, llm_output):
-            mentioned.add(_strip_diff_prefix(m))
+            m = _strip_diff_prefix(m)
+            if _VERSION_LIKE_PATH.match(m):
+                continue
+            mentioned.add(m)
     for m in _CLAIMED_FILE_PATTERN.finditer(llm_output):
         mentioned.update(_CLAIMED_BARE_FILE_RE.findall(m.group(0)))
     return mentioned

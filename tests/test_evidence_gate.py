@@ -337,8 +337,9 @@ class TestFinalizeEvidenceLayeredDelivery:
         degraded = [e for e in events if e.payload.get("degraded")]
         assert degraded, "已落盘场景必须记录降级警告"
 
-    def test_no_write_still_raises(self) -> None:
-        """从未落盘 + 声称创建 → 维持 fail-closed raise（贴 diff 不落盘）。"""
+    def test_no_write_records_and_does_not_raise(self) -> None:
+        """从未落盘 + 声称创建 → 引擎不阻断；失败记录进 ledger，
+        由回合级 TurnGate 接续判定（R 收敛：引擎是纯执行器）。"""
         engine = self._make_engine()
         ctx = AgentContext()
         self._bind(engine, ctx)
@@ -348,12 +349,8 @@ class TestFinalizeEvidenceLayeredDelivery:
             ]
         )
         output = "我创建了 src/real_fix.py，修改完成。"
-        try:
-            engine.finalize_evidence(context=ctx, output=output, tracker=tracker)
-        except RuntimeError as exc:
-            assert "delivery evidence gate failed" in str(exc)
-        else:
-            raise AssertionError("未落盘 + 声称创建必须 fail-closed raise")
+        pack = engine.finalize_evidence(context=ctx, output=output, tracker=tracker)
+        assert pack.gate_failures >= 1  # 判定被记录（审计），不再 raise
 
     def test_clean_output_passes(self) -> None:
         engine = self._make_engine()
