@@ -126,21 +126,65 @@ def test_append_resumes_chain_after_reopen(tmp_path):
 
 
 def test_evidence_command_current_session(tmp_path, monkeypatch):
-    """/evidence 默认展示当前会话并核验哈希链。"""
+    """/evidence 默认展示结构化回合摘要（给人看）。"""
 
     from xenon.repl.command_groups.evidence import _cmd_evidence
 
     log = SessionEventLog("sess-1", directory=tmp_path)
-    log.append("turn/user", text="调研任务")
+    log.append("turn/user", text="调研任务", intent="资料调研")
     log.append("tool/result", tool="github_fetch", success=True)
+    log.append("turn/verdict", status="passed", engine="react", steps=4, tools=1, errors=0)
+    log.append("turn/assistant", preview="调研结论：这是一个多智能体系统")
 
     class _Repl:
         _session_events = log
 
     out = _cmd_evidence(args="", session_state={"_repl": _Repl()})
     assert "sess-1" in out
-    assert "完整" in out  # 链完整
-    assert "tool/result" in out
+    assert "链: ✅ 完整" in out
+    assert "会话回合" in out
+    assert "🎯 资料调研" in out
+    assert "github_fetch ×1" in out
+    assert "✅ 发布成功" in out
+    assert "多智能体系统" in out
+
+
+def test_evidence_command_raw_view(tmp_path):
+    """/evidence raw 保留逐条哈希明细（给机器/审计员看）。"""
+
+    from xenon.repl.command_groups.evidence import _cmd_evidence
+
+    log = SessionEventLog("sess-1", directory=tmp_path)
+    log.append("turn/user", text="hi")
+
+    class _Repl:
+        _session_events = log
+
+    out = _cmd_evidence(args="raw", session_state={"_repl": _Repl()})
+    assert "逐条事件" in out
+    assert "turn/user" in out
+    assert "h=" in out
+
+
+def test_evidence_human_view_marks_reminder_pass(tmp_path):
+    """passed + 核验理由 → 显示「发布成功 + 附核验提醒」。"""
+
+    from xenon.repl.command_groups.evidence import _cmd_evidence
+
+    log = SessionEventLog("sess-1", directory=tmp_path)
+    log.append("turn/user", text="调研")
+    log.append(
+        "turn/verdict",
+        status="passed",
+        reasons=["声称创建但未经工具验证的文件: a.md"],
+        engine="react",
+    )
+
+    class _Repl:
+        _session_events = log
+
+    out = _cmd_evidence(args="", session_state={"_repl": _Repl()})
+    assert "🟡 发布成功 · 附 1 条核验提醒" in out
 
 
 def test_evidence_command_global_view(tmp_path, monkeypatch):
