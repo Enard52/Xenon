@@ -33,7 +33,7 @@
 | 轨道数 / 分叉数 | 3 / 14 |
 | 观测 LLM 调用 | 131 |
 
-报告：`evals/reports/official/2026-07-29-react-real/report.md`
+报告：历史版本归档（v0.7.x 时期报告，已随旧评测产物清理，以本文为准）
 
 **这次跑测修正了一个此前让缓存指标失真的缺陷。** `ReActEngine._build_system_prompt()`
 把 `datetime.now().strftime('%H:%M:%S')` 注入 system prompt 的运行环境段，而 REPL
@@ -183,7 +183,7 @@ CacheTracker 缓存字段覆盖 100%，Cache Rails 命中率 **85.98%**，可复
 > - **Cache Rails 厂商上报命中率 97.35%**，节省 93.03%（¥0.2567 vs ¥3.6847 全 miss 基线）
 > - **SWE-bench Lite 官方 harness 已接入**：1 instance × 7 引擎矩阵通过 4/7；
 >   30-instance 分层抽样已确定待运行
-> - 数据见 [`evals/reports/official/2026-07-29-react-real/`](../evals/reports/official/2026-07-29-react-real/report.md)
+> - 数据随旧评测产物清理（v0.7.x 时期），本文档保留结论性数字
 
 > **可以讲的工程故事**：发现自己的核心指标测错了对象——system prompt 里的秒级时间戳
 > 让 Cache Rails 每轮分叉，此前报告的命中率只是单次 run 内的复用，不是跨轮复用。
@@ -197,8 +197,8 @@ CacheTracker 缓存字段覆盖 100%，Cache Rails 命中率 **85.98%**，可复
 
 ## 七、相关报告
 
-- [`evals/reports/real_report.md`](../evals/reports/real_report.md) — Real 模式 v2（本节生成，9/20 成功）
-- [`evals/reports/mock_report.md`](../evals/reports/mock_report.md) — Mock 模式（20/20 框架自检）
+- Real 模式 v2（本节生成，9/20 成功；旧报告文件已清理）
+- Mock 模式（20/20 框架自检；旧报告文件已清理）
 
 > v0.2.2 时期的旧版测试报告已从文档目录移除，需要时可从 git 历史中找回。
 
@@ -211,7 +211,7 @@ python evals/runner.py \
   --mode real \
   --model deepseek/deepseek-v4-pro \
   --workdir /tmp/xenon-real-workdir \
-  --output evals/reports/real_report_v0.7.3.md
+  --output real_report_v0.7.3.md
 ```
 
 评测必须记录提交、模型、API 网关、任务集版本、运行时间、费用、成功率和失败分类。

@@ -7,7 +7,7 @@ violations, required-operation recall and latency.
 Usage:
     python evals/intent_eval.py                    # regex + real LLM
     python evals/intent_eval.py --baseline regex   # offline only
-    python evals/intent_eval.py --out evals/results/intent_eval.json
+    python evals/intent_eval.py --out intent_eval.json
 """
 
 from __future__ import annotations

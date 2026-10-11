@@ -11,4 +11,4 @@
 | WebArena | 浏览器 DOM 交互 | 当前环境未安装浏览器环境 | 需要 BrowserGym/WebArena 服务、浏览器隔离和页面状态断言 |
 | τ-bench / ToolBench | 工具选择、参数和顺序 | Xenon 内部工具生命周期套件可先覆盖同类信号 | 接入官方工具 API，单独统计 tool policy、参数、顺序和最终状态 |
 
-当前可以可靠运行 Xenon 本地两套诊断，以及 SWE-bench Lite 官方 harness。首个真实 Xenon ReAct smoke 的原始预测、官方报告和测试日志保存在 `evals/reports/official/swebench-lite/2026-07-28-react-smoke/`。单实例 smoke 只证明端到端接入正确，不代表 300 题完整 split 的总体正确率。其余外部 benchmark 只有在对应官方数据集、环境服务和判定器就绪后才会生成官方结果，不能用本地 proxy 冒充。
+当前可以可靠运行 Xenon 本地两套诊断，以及 SWE-bench Lite 官方 harness。首个真实 Xenon ReAct smoke 的原始预测、官方报告和测试日志随旧评测产物归档清理（v0.7.x 时期 smoke，不代表当前架构）。单实例 smoke 只证明端到端接入正确，不代表 300 题完整 split 的总体正确率。其余外部 benchmark 只有在对应官方数据集、环境服务和判定器就绪后才会生成官方结果，不能用本地 proxy 冒充。
