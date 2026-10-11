@@ -9,7 +9,7 @@ TurnGate 的文件声称审计承接；写入后验证失败（原 VerificationL
 
 from __future__ import annotations
 
-from xenon.turn.gate import VERDICT_FAIL, VERDICT_PASS, TurnGate
+from xenon.turn.gate import VERDICT_FAIL, VERDICT_PASS, VERDICT_REMIND, TurnGate
 
 
 class TestTurnGateFileClaims:
@@ -27,8 +27,12 @@ class TestTurnGateFileClaims:
                 "params": {"file_path": str(tmp_path / "a.py")},
             }
         ]
-        verdict = gate.evaluate(f"已创建 {target}", tool_events=events)
-        assert verdict.outcome == VERDICT_FAIL
+        answer = (
+            f"已创建 {target}，内容如下：\n```python\nprint(1)\n```\n"
+            f"共 12 行，已完成写入流程。\n"
+        )
+        verdict = gate.evaluate(answer, tool_events=events)
+        assert verdict.outcome == VERDICT_REMIND  # L2 语义层：提醒不阻断
         assert any("未经工具验证" in r for r in verdict.reasons)
 
     def test_verified_claim_passes_gate(self, tmp_path):
@@ -44,8 +48,8 @@ class TestTurnGateFileClaims:
         verdict = gate.evaluate(f"已创建 {target}，内容已写入", tool_events=events)
         assert verdict.outcome == VERDICT_PASS
 
-    def test_retries_do_not_loop_forever_fuse(self, tmp_path):
-        """同因失败熔断：不会无限重试（fail-closed）。"""
+    def test_semantic_claims_never_fuse(self, tmp_path):
+        """L2 语义层不进入重试轮次：同因提醒两次仍为 remind（不熔断）。"""
 
         gate = TurnGate(max_same_cause_failures=2)
         target = tmp_path / "x.py"
@@ -56,10 +60,14 @@ class TestTurnGateFileClaims:
                 "params": {"file_path": str(tmp_path / "a.py")},
             }
         ]
-        first = gate.evaluate(f"已创建 {target}", tool_events=events)
-        second = gate.evaluate(f"已创建 {target}", tool_events=events)
-        assert first.outcome == VERDICT_FAIL
-        assert second.outcome == "fuse"
+        answer = (
+            f"已创建 {target}，内容如下：\n```python\nprint(1)\n```\n"
+            f"共 12 行，已完成写入流程。\n"
+        )
+        first = gate.evaluate(answer, tool_events=events)
+        second = gate.evaluate(answer, tool_events=events)
+        assert first.outcome == VERDICT_REMIND
+        assert second.outcome == VERDICT_REMIND  # 语义层永不熔断
 
 
 class TestTurnGateWriteVerify:
@@ -75,8 +83,12 @@ class TestTurnGateWriteVerify:
             },
             {"tool": "command", "success": False, "error": "assert 失败"},
         ]
-        verdict = gate.evaluate("修复完成", tool_events=events)
-        assert verdict.outcome == VERDICT_FAIL
+        answer = (
+            "修复完成：已修改 x.py 中的函数逻辑，新增边界检查。\n"
+            "```python\ndef f(): return 1\n```\n"
+        )
+        verdict = gate.evaluate(answer, tool_events=events)
+        assert verdict.outcome == VERDICT_REMIND  # L2 提醒不阻断
         assert any("写入后验证" in r for r in verdict.reasons)
 
     def test_disclosed_failure_passes(self):
@@ -131,3 +143,14 @@ class TestTurnGateHollow:
         verdict = gate.evaluate("已完成修复", tool_events=[])
         assert verdict.outcome == VERDICT_FAIL
         assert any("空洞" in r for r in verdict.reasons)
+
+
+def test_windows_backslash_path_is_not_hollow():
+    """回归：省略号模式曾把 Windows 反斜杠路径误判为空洞回答。"""
+
+    from xenon.engine.hollow_detector import HollowDetector
+
+    path = "C:" + chr(92) + "Users" + chr(92) + "Admin" + chr(92) + "x.py"
+    answer = f"已修改 {path}，共 3 处，验证通过。\n```python\nprint(1)\n```\n"
+    result = HollowDetector().detect(answer, 1)
+    assert result.is_hollow is False

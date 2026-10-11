@@ -106,6 +106,28 @@ def render_verification_failure(draft: str, reasons: list[str]) -> None:
     )
 
 
+def render_verification_reminders(reasons: list[str], *, degraded: bool) -> None:
+    """L2 语义层核验清单：答案照常输出，附「待人工核验」面板。"""
+
+    console = _console()
+    console.print()
+    title = (
+        "⚠️ 降级发布：部分内容无法自动核验，请人工核对"
+        if degraded
+        else "⚠️ 待人工核验清单"
+    )
+    console.print(
+        Panel(
+            "\n".join(f"- {r}" for r in reasons)
+            + "\n\n以上项目 Xenon 无法自动验证真伪。答案已照常输出，"
+            "请自行核对后再信任相应结论。",
+            title=title,
+            border_style="yellow",
+            padding=(0, 1),
+        )
+    )
+
+
 def render_assistant_text(
     content: str, *, title: str = "Assistant", model_id: str | None = None
 ) -> None:

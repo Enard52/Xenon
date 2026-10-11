@@ -1,11 +1,13 @@
-"""TurnGate: 回合级唯一校验层（发布门，按会话轮次设计）。
+"""TurnGate: 回合级唯一校验层（三层可信度模型）。
 
-所有校验语义收敛于此：宣称审计、完成准则、文件声称审计（原引擎交付闸门）、
-写入后验证（原引擎 VerificationLoop）、空洞回答（原引擎 HollowDetector）、
-无进展/同因失败熔断。引擎内部不再有校验门；回合收尾时 REPL 调用一次，
-得到 GateVerdict：pass 发布 / fail 反馈重试 / fuse 熔断。
+- L0 证据层：append-only 哈希链（evidence ledger，独立层），只证过程真实。
+- L1 结构层（本门阻断类）：空洞回答——确定性、无语义盲点，命中才重试/熔断。
+- L2 语义层（本门提醒类）：宣称审计、完成准则、文件声称、写入后验证——
+  存在先天盲点（内容语义无穷），**不再阻断发布**；命中时生成
+  「待人工核验清单」随答案一起输出，让用户自行核对。
 
-确定性组件：无 LLM 调用、不授予权限。
+判定：pass 发布 / fail（结构层）反馈重试 / remind（语义层）发布+提醒 /
+fuse 同因结构失败熔断。确定性组件：无 LLM 调用、不授予权限。
 """
 
 from __future__ import annotations
@@ -22,7 +24,11 @@ from xenon.engine.task_verifier import (
 
 VERDICT_PASS = "pass"
 VERDICT_FAIL = "fail"
+VERDICT_REMIND = "remind"
 VERDICT_FUSE = "fuse"
+
+# 可发布（附提醒或不附）的判定。
+PUBLISHABLE_OUTCOMES = frozenset({VERDICT_PASS, VERDICT_REMIND})
 
 
 @dataclass
@@ -92,25 +98,25 @@ class TurnGate:
         criteria: list[str] | tuple[str, ...] = (),
     ) -> GateVerdict:
         events = list(tool_events)
-        reasons: list[str] = []
+        structural: list[str] = []  # L1 结构层：命中才阻断/重试/熔断
+        reminders: list[str] = []  # L2 语义层：发布 + 待人工核验清单
 
-        # 1) 宣称审计 + 完成准则（task_verifier 规则源）。
-        ok, base_reasons = verify_final_answer(
-            answer or "", criteria=list(criteria), tool_events=events
-        )
-        reasons.extend(base_reasons)
-
-        # 2) 空洞回答（原引擎 HollowDetector，回合级）：只在做过工或
-        #    任务级宣称成功时检查，避免误伤短回复闲聊。
+        # L1) 空洞回答：确定性结构判定，无语义盲点。
         if events or _SUCCESS_CLAIM.search(answer or ""):
             hr = HollowDetector().detect(answer or "", len(events))
             if hr.is_hollow:
                 hits = list(getattr(hr, "hits", []) or [])
-                reasons.append(
+                structural.append(
                     f"回答空洞（{hits[0] if hits else '无实质内容'}）"
                 )
 
-        # 3) 文件声称审计（原引擎 FileClaimGate 交付闸门，回合级）。
+        # L2) 宣称审计 + 完成准则（task_verifier 规则源）。
+        ok, base_reasons = verify_final_answer(
+            answer or "", criteria=list(criteria), tool_events=events
+        )
+        reminders.extend(base_reasons)
+
+        # L2) 文件声称审计：存在读写盲点，只提醒不阻断。
         try:
             from xenon.engine.evidence_gate import verify_file_claims
 
@@ -118,13 +124,13 @@ class TurnGate:
                 answer or "", _EventTracker(events)
             )
             if not passed:
-                reasons.append(
-                    f"LLM 声称创建但未经工具验证的文件: {', '.join(unverified)}"
+                reminders.append(
+                    f"声称创建但未经工具验证的文件: {', '.join(unverified)}（如为远程读取请忽略）"
                 )
         except Exception:  # noqa: BLE001 — 规则失败不影响其他规则
             pass
 
-        # 4) 写入后验证失败且未披露（原引擎 VerificationLoop，回合级）。
+        # L2) 写入后验证失败且未披露。
         has_write = any(
             e.get("tool") in _WRITE_TOOLS and e.get("success") for e in events
         )
@@ -137,28 +143,33 @@ class TurnGate:
         if has_write and failed_cmd and not ok_cmd and not _FAILURE_CLAIM.search(
             answer or ""
         ):
-            reasons.append("写入后验证命令失败且回答未披露，需修复或如实说明")
+            reminders.append("写入后验证命令失败且回答未披露，建议人工复核")
 
-        if not reasons:
+        # 结构层优先：命中 → 阻断/重试/熔断（同因比较只基于结构层）。
+        if structural:
+            signature = tuple(sorted(structural))
+            if self._rounds and self._rounds[-1].signature == signature:
+                self._rounds.append(_RetryRound(signature))
+                if len(self._rounds) >= self.max_same_cause_failures:
+                    self.reset()
+                    head = structural[0]
+                    return GateVerdict(
+                        VERDICT_FUSE,
+                        reasons=[
+                            f"连续 {self.max_same_cause_failures} 轮结构校验原因相同"
+                            f"（{head}），熔断以免原地打转"
+                        ],
+                    )
+            else:
+                self._rounds = [_RetryRound(signature)]
+            return GateVerdict(VERDICT_FAIL, reasons=list(structural))
+
+        if reminders:
             self.reset()
-            return GateVerdict(VERDICT_PASS)
+            return GateVerdict(VERDICT_REMIND, reasons=list(reminders))
 
-        signature = tuple(sorted(reasons))
-        if self._rounds and self._rounds[-1].signature == signature:
-            self._rounds.append(_RetryRound(signature))
-            if len(self._rounds) >= self.max_same_cause_failures:
-                self.reset()
-                head = reasons[0] if reasons else "校验未通过"
-                return GateVerdict(
-                    VERDICT_FUSE,
-                    reasons=[
-                        f"连续 {self.max_same_cause_failures} 轮校验原因相同"
-                        f"（{head}），熔断以免原地打转"
-                    ],
-                )
-        else:
-            self._rounds = [_RetryRound(signature)]
-        return GateVerdict(VERDICT_FAIL, reasons=list(reasons))
+        self.reset()
+        return GateVerdict(VERDICT_PASS)
 
     @property
     def rounds_used(self) -> int:

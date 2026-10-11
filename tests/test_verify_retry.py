@@ -89,7 +89,7 @@ def test_run_engine_retries_when_verification_fails(monkeypatch, tmp_path):
     repl = REPL(registry=registry, streaming=False)
     repl._last_user_text = "帮我看看这个项目"  # 无完成准则：只由宣称审计规则触发
 
-    engines = [_FakeEngine("任务完成 ✅"), _FakeEngine("修复完成，CI 通过")]
+    engines = [_FakeEngine("好的"), _FakeEngine("修复完成，CI 通过")]
     callbacks = [_Callback(_Panel(True)), _Callback(_Panel(False))]
     spec = EngineSpec(
         name="fake",
@@ -150,7 +150,7 @@ def test_run_engine_exhausts_retries_and_still_renders(monkeypatch, tmp_path):
     repl = REPL(registry=registry, streaming=False)
     repl._last_user_text = "帮我看看这个项目"  # 无完成准则：只由宣称审计规则触发
 
-    engines = [_FakeEngine("任务完成 ✅"), _FakeEngine("任务完成 ✅")]
+    engines = [_FakeEngine("好的"), _FakeEngine("好的")]
     callbacks = [_Callback(_Panel(True)), _Callback(_Panel(True))]
     spec = EngineSpec(
         name="fake",
@@ -195,7 +195,7 @@ def test_run_engine_exhausts_retries_and_still_renders(monkeypatch, tmp_path):
     repl._run_engine(spec, "修到 CI 通过", ["openai/test"])
 
     assert engines == []  # 重试轮仍会运行（第一次失败触发一轮重试）
-    assert rendered == ["任务完成 ✅"]
+    assert rendered == ["好的"]
     events = repl._session_events.read()
     assert sum(1 for e in events if e["type"] == "verification/retry") == 1
 
@@ -218,7 +218,7 @@ def test_retry_budget_half_of_first_round_clamped(monkeypatch, tmp_path):
             self.max_iterations = 40
 
     def factory(**kw):
-        engine = _BudgetEngine("任务完成 ✅")
+        engine = _BudgetEngine("好的")
         engine_budgets.append(engine)
         return engine
 

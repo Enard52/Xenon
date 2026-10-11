@@ -71,13 +71,15 @@ def test_repl_verify_turn_returns_failure_and_records(monkeypatch, tmp_path):
 
     ok, reasons = repl._verify_turn(_Panel(), "已完成，全部通过 ✅")
 
-    assert ok is False
+    # L2 语义层：宣称审计命中 → 提醒类，答案可发布（ok=True）。
+    assert ok is True
     assert reasons
     events = repl._session_events.read()
-    assert any(e["type"] == "verification/failed" for e in events)
+    assert any(e["type"] == "verification/remind" for e in events)
 
 
 def test_render_gate_suppresses_success_when_verification_fails(monkeypatch, tmp_path):
+    """语义层提醒：答案照常渲染 + 黄色「待人工核验清单」面板。"""
     monkeypatch.setenv("XENON_SESSION_EVENTS_DIR", str(tmp_path))
     registry = ModelRegistry()
     registry.add_model("openai/test", "test")
@@ -113,6 +115,6 @@ def test_render_gate_suppresses_success_when_verification_fails(monkeypatch, tmp
 
     repl._render_engine_result(_Callback(), "已完成，全部通过 ✅", "ReAct 结果")
 
-    assert rendered == []  # 成功渲染被抑制
-    assert "任务校验未通过" in output.getvalue()
-    assert "草稿" in output.getvalue()
+    assert rendered == ["已完成，全部通过 ✅"]  # 答案照常输出（不再抑制）
+    assert "待人工核验" in output.getvalue()
+    assert "任务校验未通过" not in output.getvalue()

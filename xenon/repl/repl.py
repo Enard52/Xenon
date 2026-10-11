@@ -709,24 +709,30 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
             else:
                 console.print("[dim]  💭 无工具调用[/dim]")
 
-        # 发布门 v2：校验未通过的答案不发布为成功结果（草稿在失败面板内展示）。
-        # 判定优先复用 TurnGate 缓存（回合内已判定过），避免重复评估。
+        # 三层可信度模型的渲染分支：判定优先复用 TurnGate 缓存。
+        # pass → 正常发布；remind → 发布 + 待人工核验清单（黄色面板）；
+        # fail（重试耗尽）→ 降级发布 + 核验清单；fuse → 按未完成交付（红色面板）。
+        verdict = getattr(self, "_last_gate_verdict", None)
         if panel is None:
-            verification_ok, verification_reasons = True, []
-        else:
+            outcome = "pass"
+        elif verdict is None:
+            self._verify_turn(panel, result)
             verdict = getattr(self, "_last_gate_verdict", None)
-            if verdict is not None:
-                verification_ok = verdict.outcome == "pass"
-                verification_reasons = verdict.reasons
-            else:
-                verification_ok, verification_reasons = self._verify_turn(
-                    panel, result
-                )
-        if verification_ok:
-            # 最终答案始终显示；正文保持正常亮度，不再使用大边框。
-            self._render_assistant_text(result, title=title)
+            outcome = verdict.outcome if verdict is not None else "pass"
         else:
-            self._render_verification_failure(result, verification_reasons)
+            outcome = verdict.outcome
+        if outcome == "fuse":
+            self._render_verification_failure(result, verdict.reasons)
+            return
+        self._render_assistant_text(result, title=title)
+        if outcome == "remind":
+            from xenon.repl.render import render_verification_reminders
+
+            render_verification_reminders(verdict.reasons, degraded=False)
+        elif outcome == "fail":
+            from xenon.repl.render import render_verification_reminders
+
+            render_verification_reminders(verdict.reasons, degraded=True)
 
     @staticmethod
     def _render_verification_failure(draft: str, reasons: list[str]) -> None:
@@ -1483,11 +1489,14 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
         return False
 
     def _verify_turn(self, panel, result: str) -> tuple[bool, list[str]]:
-        """发布门：TurnGate 单一判定；失败记事实；判定缓存供渲染复用。"""
+        """发布门：TurnGate 单一判定；提醒类记事实；判定缓存供渲染复用。
+
+        返回 (可发布, 原因)：pass/remind → True；fail/fuse → False。
+        """
 
         try:
             from xenon.engine.task_verifier import extract_acceptance_criteria
-            from xenon.turn.gate import tool_events_from_panel
+            from xenon.turn.gate import PUBLISHABLE_OUTCOMES, tool_events_from_panel
 
             tool_events = tool_events_from_panel(panel)
             criteria = extract_acceptance_criteria(
@@ -1497,9 +1506,11 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
                 result or "", tool_events=tool_events, criteria=criteria
             )
             self._last_gate_verdict = verdict
-            if verdict.outcome != "pass":
+            if verdict.outcome == "remind":
+                self._record_event("verification/remind", reasons=verdict.reasons)
+            elif verdict.outcome not in PUBLISHABLE_OUTCOMES:
                 self._record_event("verification/failed", reasons=verdict.reasons)
-            return verdict.outcome == "pass", verdict.reasons
+            return verdict.outcome in PUBLISHABLE_OUTCOMES, verdict.reasons
         except Exception:  # noqa: BLE001 — 校验失败不能阻断输出
             logger.debug("任务校验执行失败（已忽略）", exc_info=True)
             return True, []

@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 PASSED = "passed"
 FAILED_RETRIED = "failed-retried"
+DEGRADED = "degraded"
 FUSED = "fused"
 INTERRUPTED = "interrupted"
 RUNNING = "running"

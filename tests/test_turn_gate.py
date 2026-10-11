@@ -9,6 +9,7 @@ from xenon.turn.gate import (
     VERDICT_FAIL,
     VERDICT_FUSE,
     VERDICT_PASS,
+    VERDICT_REMIND,
     TurnGate,
     tool_events_from_panel,
 )
@@ -27,7 +28,7 @@ def test_pass_on_clean_answer():
 def test_fail_then_pass_resets_rounds():
     gate = TurnGate()
     bad = [{"tool": "command", "success": False, "error": "pytest failed"}]
-    assert gate.evaluate("已完成 ✅ 任务完成", tool_events=bad).outcome == VERDICT_FAIL
+    assert gate.evaluate("好的", tool_events=bad).outcome == VERDICT_FAIL  # 空洞=结构层
     assert gate.rounds_used == 1
     good = [{"tool": "command", "success": True}]
     assert (
@@ -39,11 +40,24 @@ def test_fail_then_pass_resets_rounds():
     assert gate.rounds_used == 0  # pass 后清零
 
 
+def test_semantic_claim_issues_are_reminders_not_failures():
+    """L2 语义层：宣称审计命中 → remind（发布 + 核验清单），不阻断。"""
+
+    gate = TurnGate()
+    bad = [{"tool": "command", "success": False, "error": "pytest failed"}]
+    verdict = gate.evaluate(
+        "已完成任务：分析了 12 个模块并给出结论", tool_events=bad
+    )
+    assert verdict.outcome == VERDICT_REMIND
+    assert any("宣称成功" in r for r in verdict.reasons)
+    assert gate.rounds_used == 0  # 提醒类不进重试轮次
+
+
 def test_same_cause_failures_fuse():
     gate = TurnGate(max_same_cause_failures=2)
     bad = [{"tool": "command", "success": False, "error": "pytest failed"}]
-    assert gate.evaluate("任务完成", tool_events=bad).outcome == VERDICT_FAIL
-    verdict = gate.evaluate("任务完成", tool_events=bad)
+    assert gate.evaluate("好的", tool_events=bad).outcome == VERDICT_FAIL
+    verdict = gate.evaluate("好的", tool_events=bad)
     assert verdict.outcome == VERDICT_FUSE
     assert any("熔断" in r for r in verdict.reasons)
 
@@ -51,17 +65,13 @@ def test_same_cause_failures_fuse():
 def test_different_causes_do_not_fuse():
     gate = TurnGate(max_same_cause_failures=2)
     bad = [{"tool": "command", "success": False, "error": "x"}]
+    assert gate.evaluate("好的", tool_events=bad).outcome == VERDICT_FAIL
+    # 不同空洞签名（quick_fail vs 套话模式）→ 重新计数
     assert (
-        gate.evaluate("任务完成", tool_events=bad, criteria=["CI 通过"]).outcome
+        gate.evaluate("综上所述，这是分析。", tool_events=bad).outcome
         == VERDICT_FAIL
     )
-    assert (
-        gate.evaluate(
-            "任务完成", tool_events=bad, criteria=["测试全部通过"]
-        ).outcome
-        == VERDICT_FAIL
-    )
-    assert gate.rounds_used == 1  # 原因不同 → 重新计数
+    assert gate.rounds_used == 1
 
 
 def test_tool_events_from_panel():
@@ -191,7 +201,7 @@ def test_run_engine_fuses_on_same_cause_instead_of_endless_retries(
     """同因失败 → 第二轮判定即熔断：不再构造第三个引擎。"""
 
     repl, spec, engines, ctx = _setup_retry_harness(
-        monkeypatch, tmp_path, ["任务完成 ✅", "任务完成 ✅", "任务完成 ✅"]
+        monkeypatch, tmp_path, ["好的", "好的", "好的"]
     )
     repl._run_engine(spec, "帮我看看这个项目", ["openai/test"])
 

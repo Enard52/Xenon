@@ -492,14 +492,23 @@ class EngineHostMixin:
 
             self._render_engine_result(callback, result, spec.result_title)
             # 结构层：回合节点状态（TurnGate 单一来源）。
-            final_status = "passed" if verification_ok else "failed-retried"
+            # pass/remind → passed（remind 附核验清单）；fail 重试耗尽 →
+            # degraded（降级发布）；fuse → fused（未完成交付）。
             verdict = getattr(self, "_last_gate_verdict", None)
-            if verdict is not None and verdict.outcome == "fuse":
-                final_status = "fused"
+            outcome = verdict.outcome if verdict is not None else "pass"
+            final_status = {
+                "pass": "passed",
+                "remind": "passed",
+                "fail": "degraded",
+                "fuse": "fused",
+            }.get(outcome, "passed")
+            node_reasons = None if outcome == "pass" else (
+                verdict.reasons if verdict is not None else verification_reasons
+            )
             self._finish_turn_node(
                 final_status,
                 engine=spec.name,
-                reasons=None if verification_ok else verification_reasons,
+                reasons=node_reasons,
                 retries_used=retries_spent,
                 panel=panel,
             )
