@@ -317,7 +317,10 @@ def test_parse_biff5_without_xlrd_has_actionable_error(tmp_path, monkeypatch) ->
     _make_biff5_xls(target)
     monkeypatch.setitem(sys.modules, "xlrd", None)
 
-    with pytest.raises(ValueError, match="pip install xenon-harness\\[office\\]"):
+    with pytest.raises(
+        ValueError,
+        match=r"pip install xenon-harness\[office\] 或 pip install xlrd",
+    ):
         parse_document(target)
 
 
