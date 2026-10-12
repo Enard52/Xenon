@@ -419,6 +419,7 @@ def _cmd_resume(*, args: str, session_state: dict, **kwargs: Any) -> str:
 
         age = get_session_age(data) or "未知时间"
         msgs = len(history)
+        _render_resumed_conversation(history, msgs)
         result = f"✅ 已恢复会话 ({age}) · {msgs} 条消息 · 范式: {paradigm or 'direct'}"
         if recovery_notice:
             result += f"\n{recovery_notice}"
@@ -516,3 +517,39 @@ def _cmd_config(*, args: str, registry: ModelRegistry, **kwargs: Any) -> str:
 
     config = registry.export_config()
     return f"当前配置:\n{json.dumps(config, indent=2, ensure_ascii=False)}"
+
+
+def _render_resumed_conversation(history: list[dict], msgs: int) -> None:
+    """恢复后把对话内容回放到终端（pi/Claude Code 式：恢复即可见历史）。
+
+    每条消息内容封顶 4000 字符，超出折叠并诚实标注；较早的消息折叠
+    不打印（但已全部进入上下文，继续对话不受影响）。
+    """
+    if not history:
+        return
+    MAX_PER_MESSAGE = 4000
+    MAX_MESSAGES = 12
+    from rich.console import Console as _Console
+
+    console_out = _Console()
+    visible = history[-MAX_MESSAGES:]
+    folded = len(history) - len(visible)
+    console_out.print(f"\n[dim]───── 已恢复的对话（{msgs} 条消息）─────[/dim]")
+    if folded:
+        console_out.print(
+            f"[dim]… 较早的 {folded} 条消息未回放（已在上下文中）[/dim]"
+        )
+    for msg in visible:
+        role = msg.get("role")
+        content = str(msg.get("content") or "")
+        if len(content) > MAX_PER_MESSAGE:
+            content = content[:MAX_PER_MESSAGE] + "\n…（内容过长，显示已折叠）"
+        if role == "user":
+            console_out.print(f"[bold cyan]❯ {content}[/bold cyan]")
+        elif role == "assistant":
+            model = msg.get("model_used") or "assistant"
+            console_out.print(f"[dim]● {model}[/dim]")
+            console_out.print(content)
+        else:
+            console_out.print(f"[dim][{role}] {content}[/dim]")
+    console_out.print("[dim]───── 回放结束，直接输入即可继续 ─────[/dim]\n")

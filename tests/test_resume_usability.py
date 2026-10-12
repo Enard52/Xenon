@@ -172,3 +172,43 @@ def test_startup_picker_env_kill_switch(monkeypatch):
 
     monkeypatch.setattr(main_mod.sys, "stdin", _Stdin())
     assert main_mod._interactive_session_picker() is None
+
+
+def test_resume_replays_conversation(capsys):
+    """恢复后把历史对话回放到终端：用户/助手消息可见。"""
+
+    from xenon.repl.command_groups.session import _render_resumed_conversation
+
+    _render_resumed_conversation(
+        [
+            {"role": "user", "content": "帮我调研海能达"},
+            {"role": "assistant", "content": "结论如下…", "model_used": "deepseek-v4-pro"},
+        ],
+        2,
+    )
+    out = capsys.readouterr().out
+    assert "已恢复的对话" in out
+    assert "帮我调研海能达" in out
+    assert "结论如下…" in out
+    assert "deepseek-v4-pro" in out
+
+
+def test_resume_replay_folds_long_content(capsys):
+    from xenon.repl.command_groups.session import _render_resumed_conversation
+
+    long = "x" * 5000
+    _render_resumed_conversation([{"role": "assistant", "content": long}], 1)
+    out = capsys.readouterr().out
+    assert "内容过长，显示已折叠" in out
+    assert "x" * 5000 not in out
+
+
+def test_resume_replay_folds_old_messages(capsys):
+    from xenon.repl.command_groups.session import _render_resumed_conversation
+
+    history = [{"role": "user", "content": f"m{i}"} for i in range(15)]
+    _render_resumed_conversation(history, 15)
+    out = capsys.readouterr().out
+    assert "较早的 3 条消息未回放" in out
+    assert "m0" not in out
+    assert "m14" in out
