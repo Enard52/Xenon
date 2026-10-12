@@ -54,6 +54,10 @@ clipboard = [
     "pynput",
     "Pillow",
 ]
+office = [
+    "xlrd>=2.0",
+    "pypdf>=4.0",
+]
 
 [project.scripts]
 xenon = "xenon.main:cli"

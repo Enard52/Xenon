@@ -12,7 +12,8 @@ Supported without extra dependencies:
 
 Optional (used when importable): ``pypdf`` / ``PyPDF2`` for PDF, ``xlrd`` for
 BIFF5 workbooks.  Everything is bounded so a giant workbook cannot flood the
-model context.
+model context.  Install the document extras with
+``pip install xenon-harness[office]``.
 """
 
 from __future__ import annotations
@@ -39,6 +40,10 @@ MAX_DOCX_PARAGRAPHS = 400
 _OLE2_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 _ZIP_MAGIC = b"PK\x03\x04"
 _PDF_MAGIC = b"%PDF"
+_BIFF5_DEPENDENCY_ERROR = (
+    "无法读取 BIFF5 版 .xls：请安装可选依赖（pip install "
+    "xenon-harness[office] 或 pip install xlrd）"
+)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -169,8 +174,63 @@ class _Ole2Container:
 
 
 # ──────────────────────────────────────────────────────────────
-# BIFF8 解析（.xls / .et）
+# BIFF5 / BIFF8 解析（.xls / .et）
 # ──────────────────────────────────────────────────────────────
+def _biff_version(workbook: bytes) -> int | None:
+    if len(workbook) < 6:
+        return None
+    record_id, record_len = struct.unpack_from("<HH", workbook, 0)
+    if record_id != 0x0809 or record_len < 2:
+        return None
+    return struct.unpack_from("<H", workbook, 4)[0]
+
+
+def _parse_biff5(
+    path: Path,
+    *,
+    max_rows: int,
+    max_cols: int,
+    max_chars: int,
+) -> tuple[str, dict[str, Any]]:
+    try:
+        import xlrd
+    except ImportError as exc:
+        raise ValueError(_BIFF5_DEPENDENCY_ERROR) from exc
+
+    book = xlrd.open_workbook(filename=str(path), on_demand=True)
+    sheet_names = book.sheet_names()
+    parts: list[str] = [f"格式: XLS/BIFF5（xlrd），工作表 {len(sheet_names)} 个"]
+    truncated = len(sheet_names) > 30
+
+    for name in sheet_names[:30]:
+        if sum(len(part) for part in parts) >= max_chars:
+            truncated = True
+            break
+        sheet = book.sheet_by_name(name)
+        rows = min(sheet.nrows, max_rows)
+        cols = min(sheet.ncols, max_cols)
+        truncated = truncated or sheet.nrows > max_rows or sheet.ncols > max_cols
+        lines = [
+            "\t".join(
+                _cell_text(sheet.cell_value(row, col)) for col in range(cols)
+            ).rstrip()
+            for row in range(rows)
+        ]
+        body = "\n".join(lines) if lines else "(空表)"
+        parts.append(f"\n## {name}\n{body}")
+
+    text = "\n".join(parts)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n…（已截断）"
+        truncated = True
+    return text, {
+        "format": "xls-biff5",
+        "sheet_count": len(sheet_names),
+        "sheets": sheet_names[:30],
+        "truncated": truncated,
+    }
+
+
 def _iter_biff_records(data: bytes) -> list[tuple[int, bytes]]:
     records: list[tuple[int, bytes]] = []
     off = 0
@@ -618,6 +678,13 @@ def parse_document(
             raise ValueError(
                 "OLE2 文档中未找到 Workbook 流（可能是 WPS 专有扩展或 .doc）。"
                 "如为 .doc，请另存为 .docx 后再读。"
+            )
+        if _biff_version(workbook) == 0x0500:
+            return _parse_biff5(
+                path,
+                max_rows=max_rows,
+                max_cols=max_cols,
+                max_chars=max_chars,
             )
         return _parse_biff8(
             workbook, max_rows=max_rows, max_cols=max_cols, max_chars=max_chars

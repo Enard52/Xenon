@@ -9,13 +9,15 @@ document is committed here.
 from __future__ import annotations
 
 import struct
+import sys
+import types
 import zipfile
 
 import pytest
 
 from xenon.engine.context import AgentContext
 from xenon.nodes.tool_executor import required_execution_level
-from xenon.nodes.tool_families.document_tools import parse_document
+from xenon.nodes.tool_families.document_tools import _biff_version, parse_document
 from xenon.nodes.tool_node import ToolNode
 from xenon.nodes.tool_registry import BUILTIN_TOOL_REGISTRY
 
@@ -117,6 +119,14 @@ def _write_cfb(workbook: bytes) -> bytes:
 
 def _make_ole2_et(path) -> None:
     path.write_bytes(_write_cfb(_biff_workbook()))
+
+
+def _make_biff5_xls(path) -> None:
+    bof = _biff(0x0809, struct.pack("<HHHHII", 0x0500, 0x0005, 0x0DBB, 0x07CC, 0, 0))
+    bof += b"\x00" * ((-len(bof)) % _SECTOR)
+    while len(bof) < 4096:
+        bof += b"\x00" * _SECTOR
+    path.write_bytes(_write_cfb(bof))
 
 
 def _make_xlsx(path) -> None:
@@ -235,6 +245,80 @@ def test_parse_biff8_ole2(tmp_path) -> None:
     assert "42.5" in text
     assert "7" in text
     assert "-5" in text
+
+
+def test_biff_version_rejects_short_or_non_bof_headers() -> None:
+    assert _biff_version(b"") is None
+    assert _biff_version(struct.pack("<HH", 0x1234, 4) + b"\x00\x00") is None
+
+
+def test_parse_biff5_with_xlrd(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "legacy.xls"
+    _make_biff5_xls(target)
+
+    class _Sheet:
+        name = "Legacy"
+        nrows = 2
+        ncols = 2
+
+        @staticmethod
+        def cell_value(row, col):
+            return [["name", "value"], ["old", 7]][row][col]
+
+    class _Book:
+        def sheet_names(self):
+            return ["Legacy"]
+
+        @staticmethod
+        def sheet_by_name(name):
+            assert name == "Legacy"
+            return _Sheet()
+
+    fake_xlrd = types.SimpleNamespace(
+        open_workbook=lambda *, filename, on_demand: _Book()
+    )
+    monkeypatch.setitem(sys.modules, "xlrd", fake_xlrd)
+
+    text, meta = parse_document(target)
+
+    assert meta["format"] == "xls-biff5"
+    assert meta["sheets"] == ["Legacy"]
+    assert "name\tvalue" in text
+    assert "old\t7" in text
+
+
+def test_parse_biff5_marks_tiny_output_as_truncated(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "legacy.xls"
+    _make_biff5_xls(target)
+
+    class _Book:
+        def sheet_names(self):
+            return ["Legacy"]
+
+        @staticmethod
+        def sheet_by_name(name):
+            raise AssertionError(f"sheet should not be opened for tiny output: {name}")
+
+    fake_xlrd = types.SimpleNamespace(
+        open_workbook=lambda *, filename, on_demand: _Book()
+    )
+    monkeypatch.setitem(sys.modules, "xlrd", fake_xlrd)
+
+    text, meta = parse_document(target, max_chars=1)
+
+    assert meta["format"] == "xls-biff5"
+    assert meta["truncated"] is True
+    assert "已截断" in text
+
+
+
+def test_parse_biff5_without_xlrd_has_actionable_error(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "legacy.xls"
+    _make_biff5_xls(target)
+    monkeypatch.setitem(sys.modules, "xlrd", None)
+
+    with pytest.raises(ValueError, match="pip install xenon-harness\\[office\\]"):
+        parse_document(target)
 
 
 def test_parse_unsupported_extension_raises(tmp_path) -> None:
