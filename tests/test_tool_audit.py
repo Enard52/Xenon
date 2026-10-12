@@ -42,8 +42,18 @@ class TestNormalizeParams:
         import inspect
 
         sig = inspect.signature(ToolNode.__init__)
+        # C-1 不变量：受信调用方的构造开关绝不能变成模型可设置的参数——
+        # security_enabled 必须被排除在 _VALID_PARAMS 之外（否则模型一个
+        # 键就能关掉路径围栏与危险命令黑名单）。
+        MODEL_FORBIDDEN_PARAMS = frozenset({"security_enabled"})
         for name, param in sig.parameters.items():
             if name in ("self", "node_id"):
+                continue
+            if name in MODEL_FORBIDDEN_PARAMS:
+                assert name not in ToolNode._VALID_PARAMS, (
+                    f"__init__ 参数 '{name}' 在 _VALID_PARAMS 中，"
+                    f"模型可以用它关闭安全边界！"
+                )
                 continue
             assert name in ToolNode._VALID_PARAMS, (
                 f"__init__ 参数 '{name}' 不在 _VALID_PARAMS 中，"

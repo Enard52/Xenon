@@ -10,14 +10,16 @@
 from __future__ import annotations
 
 import os
-import pty
 import sys
 import threading
 import time
 
 import pytest
 
-from xenon.repl.setup_wizard import _masked_input
+from xenon.repl.setup_wizard import _masked_input  # noqa: E402  # Windows 跳过需先 importorskip
+
+# Windows 无 POSIX pty：跳过整个模块（CI/本机测试收集不再中断）。
+pty = pytest.importorskip("pty")
 
 
 class _FakeStdin:

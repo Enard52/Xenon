@@ -710,9 +710,11 @@ class ToolExecutor:
         self.execution_policy = policy
 
     def _runtime_params(self, params: dict[str, Any]) -> dict[str, Any]:
+        # C-1 修复：security_enabled 是受信调用方的构造参数，不是模型可
+        # 设置的字段——无论 runtime 是否存在，先从模型参数里剥离。
+        bound = {k: v for k, v in params.items() if k != "security_enabled"}
         if self.runtime is None:
-            return params
-        bound = dict(params)
+            return bound
         for key in ("file_path", "path", "directory"):
             if key in bound:
                 bound[key] = self.runtime.translate_path(bound[key])
@@ -904,7 +906,11 @@ class ToolExecutor:
                 error_kind="sandbox_read_only",
             )
         if tool_name == "command":
-            denial = command_denial_reason(str(params.get("command") or ""))
+            # C-2 修复：normalize 后命令文本在 action 键下（旧路径写 command）；
+            # 两个键都读，避免白名单永远拿到 None 成为死代码。
+            denial = command_denial_reason(
+                str(params.get("action") or params.get("command") or "")
+            )
             if denial:
                 return finish(
                     False,

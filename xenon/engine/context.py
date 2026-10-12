@@ -135,6 +135,10 @@ exceeds the current turn's ``_execution_level``.  Returning True lets the
         with self._tool_checkpoint_lock:
             self._approval_callback = callback
 
+    def get_approval_callback(self) -> Any:
+        """只读访问审批通道（子代理继承父上下文时使用）。"""
+        return self._approval_callback
+
     def request_approval(
         self,
         tool_name: str,

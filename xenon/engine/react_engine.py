@@ -1400,6 +1400,9 @@ class ReActEngine(BaseEngine):
         # 隔离 ctx：复制对话消息作历史兜底
         sub_ctx = AgentContext()
         sub_ctx.set_conversation_messages(list(context.get_conversation_messages()))
+        # H-1 修复：子代理继承父上下文的审批通道——没有通道时子代理的
+        # 越界写/命令会“无回调即放行”，等于绕过边界审批。
+        sub_ctx.set_approval_callback(context.get_approval_callback())
 
         # P1 安全：继承父 Agent 的执行权限级别
         # 防止权限提升：父 Agent 只有只读权限时，子 Agent 不应该能执行写操作
@@ -1522,6 +1525,8 @@ class ReActEngine(BaseEngine):
 
             sub_ctx = AgentContext()
             sub_ctx.set_conversation_messages(list(context.get_conversation_messages()))
+            # H-1 修复：批量并行路径同样继承审批通道。
+            sub_ctx.set_approval_callback(context.get_approval_callback())
 
             # P1 安全：继承父 Agent 的执行权限级别（批量并行任务）
             execution_level = context.get("_execution_level")

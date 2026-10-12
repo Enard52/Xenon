@@ -149,6 +149,8 @@ FAIL」的有效性自检，确认测试真的锁住行为而非恒真。
 - 12 个 resolved 实例覆盖 8 个仓库，含历史硬实例 sympy-14817
 - 即便最便宜模型 + 单次尝试，40.0% 已超过混合模型基线 36.7%
 - 完整报告：`evals/results/SWEBENCH_REPORT.md` §2.5
+  （v0.9.2 仓库清理后原始产物已移出主分支，可从 git 历史
+  `git show 6ca8695^:evals/results/SWEBENCH_REPORT.md` 取回）
 
 ### 框架能力提升
 
@@ -331,10 +333,14 @@ read-before-write 证据链完整）；独立复核 `add(2,3)==5` 等断言全�
 - **文件声称提取修复**：代码引用（`self.c`）、diff 头（`a/` `b/`）、
   并列声称（"已保存 A 和 B"）三类误判根因修复 + 14 回归测试
 
-### SWE-bench 官方评测（SWE-bench_Lite，30 实例可复现）
+### SWE-bench 官方评测（SWE-bench_Lite，30 实例）
+
+> 注：原始预测/评分文件在 v0.9.2 仓库清理（6ca8695）时移出主分支，
+> 仍可从 git 历史取回（`git show 6ca8695^:evals/results/…`）；
+> 复现流程见 docs/XENON_EVAL_PROTOCOL.md。
 
 - 基线（混合模型）：**11/30 = 36.7% instance-level**（45.8% cell-level），
-  完整方法论 + 预测文件入库 `evals/results/`
+  完整方法论 + 预测文件（历史归档于 `evals/results/`，见上注）
 - 同模型回归验证：9 单元格 A/B，基线通过单元格 **6/6 全部保住
   （100% 回归保护）**，Gate 误杀 0
 - 全 flash 同模型重跑：补丁产出 **70/150**（plan-react 18、react-reflection

@@ -538,7 +538,6 @@ class ToolNode(
         "python_function",
         "command_template",
         "params",
-        "security_enabled",
         "start_line",
         "max_lines",
         # v0.6.1: LSP 工具参数

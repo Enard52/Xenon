@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-import fcntl
 import os
 from pathlib import Path
-import pty
 import re
 import select
 import shutil
 import struct
-import subprocess
-import sys
-import termios
-import time
-
 import pytest
+
+# Windows 无 POSIX pty/fcntl：跳过整个模块（CI/本机测试收集不再中断）。
+pty = pytest.importorskip("pty")
+fcntl = pytest.importorskip("fcntl")
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+import termios  # noqa: E402
+import time  # noqa: E402
+
+import pytest  # noqa: E402
 
 
 pytestmark = pytest.mark.e2e

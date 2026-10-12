@@ -310,3 +310,22 @@ def test_boundary_approval_records_allowed_once_and_uses_typed_prompt(
     assert outcome == APPROVAL_ALLOWED_ONCE
     assert "command" in repl._boundary_approved_once
     assert seen["prompt"] == "选择"
+
+
+def test_command_with_workspace_file_path_still_prompts(monkeypatch, tmp_path):
+    """H-2 回归：命令带工作区内 file_path 不得绕过审批面板（执行级必问）。"""
+
+    repl = _make_repl(tmp_path)
+    _quiet_config(monkeypatch)
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    asked = []
+    monkeypatch.setattr(
+        "xenon.repl.repl.Prompt.ask",
+        lambda *a, **k: asked.append(1) or "y",
+    )
+    outcome = repl._confirm_tool_approval(
+        "command",
+        {"command": "git status", "file_path": str(tmp_path / "a.txt")},
+    )
+    assert asked, "命令必须走审批面板，带工作区内 file_path 也不例外"
+    assert outcome == APPROVAL_ALLOWED_ONCE

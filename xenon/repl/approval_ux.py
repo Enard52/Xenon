@@ -190,8 +190,15 @@ class ApprovalUxMixin:
             logger.info("非交互环境：%s 未获边界审批", tool_name)
             return APPROVAL_UNAVAILABLE
 
-        # 写工具在工作区内免问（用户决策 1）。命令类没有目标路径，会走到询问。
-        if not targets_outside_workspace(tool_name, params, self._workspace_root()):
+        # 写工具在工作区内免问（用户决策 1）。执行级工具（command /
+        # spawn_agent / 执行型 mcp_call）无论参数如何都必须询问——
+        # 模型带一个工作区内的 file_path 不能绕过审批面板（H-2 修复）。
+        from xenon.nodes.tool_classify import required_execution_level
+
+        if (
+            required_execution_level(tool_name, params) < 3
+            and not targets_outside_workspace(tool_name, params, self._workspace_root())
+        ):
             return APPROVAL_ALLOWED_ONCE
 
         brief = str(params.get("command") or params.get("action") or "")[:120]
