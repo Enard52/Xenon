@@ -1,10 +1,12 @@
 name: Publish to PyPI
 
-# 暂改为手动触发：PyPI 上还没有 xenon-harness 项目（未配置 Trusted
-# Publisher），tag 自动触发只会产生必红的运行。待 PyPI 项目建立并配好
-# OIDC 后，改回 `push: tags: ["v*"]` 即可自动发布。
+# tag 自动触发 + 手动触发双通道。PyPI 侧需先配置 Trusted Publisher
+# （pending publisher：project=xenon-harness, owner=xianyu-sheng,
+#  repo=Xenon, workflow=pypi-publish.yml，environment 留空）。
 on:
   workflow_dispatch:
+  push:
+    tags: ["v*"]
 
 jobs:
   pypi-publish:
@@ -25,6 +27,10 @@ jobs:
 
       - name: Install build tools
         run: pip install build twine
+
+      - name: Verify tag matches package version
+        run: |
+          python -c "import os,sys,xenon; t=os.environ['GITHUB_REF_NAME'].lstrip('v'); sys.exit(0 if xenon.__version__==t else f'tag {t} != version {xenon.__version__}')"
 
       - name: Build package
         run: python -m build

@@ -40,7 +40,12 @@
 
 ## 快速开始
 
-当前版本：**v0.9.2**（版本单一来源 `xenon.__version__`，历史见 [CHANGELOG](CHANGELOG.md)，发行包见 [GitHub Releases](https://github.com/xianyu-sheng/Xenon/releases)）。
+当前版本：**v0.9.2**（版本单一来源 `xenon.__version__`，历史见 [CHANGELOG](CHANGELOG.md)）。
+
+```bash
+# 从 GitHub Releases 直接安装（无需 PyPI 账号）
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.2/xenon_harness-0.9.2-py3-none-any.whl
+```
 
 ```bash
 # 克隆源码本地安装（editable，源码即运行版）
