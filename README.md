@@ -7,11 +7,23 @@
 
 一个交互式 **AI 编码代理（Agent Harness）**：在终端里与多模型协作完成任务——读写代码、执行命令、验证结果，每一步都经过确定性校验与可审计的权限边界。
 
+[English](README.en.md) | 简体中文
+
+```bash
+# 30 秒安装（无需 PyPI）
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
+xenon   # 首次运行引导配置（/setup：Key、模型、范式）
+```
+
 > **定位：唯一一个把"机器验证到什么程度"透明说给用户听的 Agent Harness。**
 > Claude Code / Codex 的哲学是"我不验证语义，你信我"；Xenon 的哲学是
 > **证据我管、真伪你核**——机器只对「过程真实性」负责，对「内容正确性」
 > 做分级透明披露。核心不是"又一个 LLM 客户端"，而是围绕
 > **证据哈希链、单一语义通道、可回溯会话树** 构建的代理骨架。
+
+`/evidence` 实际输出（结构化回合摘要 + 一行链自证）：
+
+<img src="docs/evidence-chain.png" alt="/evidence 输出示例" width="720">
 
 ## 三层可信度模型（核心差异）
 
@@ -25,10 +37,6 @@
 （`xenon/turn/gate.py`）；引擎内仅有确定性结构纠偏（不完整回答重写、
 无工具完成声明重试），不做 LLM 语义判定；
 工具成败只由工具回执的 `success` 字段决定（单一语义通道），不用关键词猜。
-
-`/evidence` 实际输出（结构化回合摘要 + 一行链自证）：
-
-<img src="docs/evidence-chain.png" alt="/evidence 输出示例" width="720">
 
 ## 其他核心能力
 
@@ -48,7 +56,7 @@
 当前版本：**v0.9.3**（版本单一来源 `xenon.__version__`，历史见 [CHANGELOG](CHANGELOG.md)）。
 
 ```bash
-# 从 GitHub Releases 直接安装（无需 PyPI 账号）
+# 从 GitHub Releases 直接安装（无需 PyPI 账号；uv 用户：uv tool install <同一 URL>）
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
 ```
 
@@ -129,7 +137,8 @@ xenon/
 - **哈希链自证的是过程不是结论**：`/evidence` 证明事件流未被篡改，不证明模型回答正确。
 - **哈希链是无密钥锚点的完整性检查**：能发现偶然损坏、单点篡改与重排；
   不能防「掌握写入权限者整链重算」。需要强抗篡改时请把事件目录放在
-  受控存储上。- **沙箱是检测 + 软件边界，不是真隔离**：不可信代码请在 WSL/Docker 容器内运行 Xenon。
+  受控存储上。
+- **沙箱是检测 + 软件边界，不是真隔离**：不可信代码请在 WSL/Docker 容器内运行 Xenon。
 - `/review` 的 revert 只覆盖有 `.bak` 备份的编辑；用 git 管理不可替代。
 - 意图分类器默认走最快可用模型，有 ~1s 延迟；不可用自动降级正则（保守）。
 
