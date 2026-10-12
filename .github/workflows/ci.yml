@@ -103,8 +103,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install runtime package
-        run: python -m pip install -e .
+      - name: Install dev package
+        run: python -m pip install -e ".[dev]"
 
       - name: Import and compile smoke test
         run: |
@@ -113,3 +113,11 @@ jobs:
 
       - name: CLI version smoke test
         run: xenon --version
+
+      # Bounded, platform-sensitive subset on all three OSes (paths, GBK,
+      # quoting, limits). Linux keeps the full suite in the test job above;
+      # this leg is about platform coverage, not exhaustiveness.
+      - name: Platform test subset
+        run: >-
+          python -m pytest tests/test_public_api.py tests/test_b1_command_quoted.py
+          tests/test_truncation_and_limits.py -q --timeout=120 -p no:cacheprovider
