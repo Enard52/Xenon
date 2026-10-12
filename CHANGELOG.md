@@ -5,11 +5,49 @@
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-10-12
+
+### 会话恢复体验
+
 - 启动会话选择器：`xenon` 进门之前先选会话（pi/Claude Code 式体验），
   数字选择历史会话或新对话；`xenon resume` 直接恢复最近；非交互终端自动跳过。
 - `xenon resume [<序号|名称>|list]` 位置参数支持。
+- 恢复任意会话后回放历史对话（用户/助手消息，超长折叠、较早折叠标注）。
 - autosave 空会话不再覆盖旧自动保存（防启动即退顶掉上一段对话）。
 - credentials.yaml 旧版扁平格式（`provider: key`）自动按内置目录派生默认模型。
+
+### 安全修复（外部评审四项 High，全部带回归测试）
+
+- **H-4 凭证外泄**：`register_tool` 的模块前缀白名单过宽——模型可注册
+  `load_credentials` / `load_github_token` 把 API Key 原样取回。新增
+  凭证/配置模块点名拒绝（github_auth / provider_registry / llm_client /
+  model_registry / system_config，含子模块）。
+- **H-5 克隆仓库 hooks 无审批执行**：项目级 `.xenon/hooks.yaml` 改为显式
+  信任制（sha256 指纹存 `~/.xenon/trusted_hooks.json`，新命令
+  `/trust-hooks`）；未信任不加载并醒目提示；内容变化需重新信任；
+  PreToolUse 超时/启动失败从放行改为 fail-closed 阻断；`.xenon/` 入
+  .gitignore。
+- **H-6 命令黑名单引号绕过**：`rm -rf "/"`、`curl … | "bash"`、
+  `dd "if=…"` 全部拦截。匹配重写为引号感知 + 段锚定：按 shell 链
+  分隔符切段，原始与去引号双候选段首锚定；跨段管道模式只在真实 `|`
+  相邻段对上判定（引号内伪管道不误报，B-1 语义全保）。
+- **H-7 授权语义收紧**：`y` 授权从按工具名改为按 `(工具, 目标路径集合)`
+  ——同一轮同工具不同路径仍需分别询问。
+
+### 加固与清理
+
+- 路径围栏：`security_enabled` 不再是模型可设置参数（曾被一个键关掉
+  围栏与黑名单）；子代理继承父上下文审批通道；执行级工具（command /
+  spawn_agent / 执行型 mcp_call）一律询问，工作区内 file_path 不再
+  绕过审批面板。
+- 沙箱命令白名单修复死代码（normalize 后读错键名）并升级为整条命令链
+  检查（`&&` / `||` / `;` / 换行逐子命令）。
+- 死代码删除：`GLOBAL_BREAKERS`、`tool_gate.EvidenceMode`；CHANGELOG
+  历史 enforce 声明标注为 v0.8.2 行为（v0.9.x 交互路径证据门固定
+  observe 审计级）；`_SENSITIVE_PATHS` Windows 反斜杠条目修复。
+- 文档收敛：ARCHITECTURE.md 重写为 v0.9.2+ 现状（三层可信度模型）；
+  COMPARISON/GUIDE/配置指南同步修正；README 徽章与浅克隆指引；
+  Windows 测试收集修复（`pytest.importorskip`，本机全量可收集）。
 
 ## [0.9.2] — 2026-10-12
 
