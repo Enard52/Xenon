@@ -19,6 +19,10 @@
 语义判定只有一处（`xenon/turn/gate.py`），引擎内部没有第二套验证循环；
 工具成败只由工具回执的 `success` 字段决定（单一语义通道），不用关键词猜。
 
+`/evidence` 实际输出（结构化回合摘要 + 一行链自证）：
+
+<img src="docs/evidence-chain.png" alt="/evidence 输出示例" width="720">
+
 ## 其他核心能力
 
 | 能力 | 说明 |
