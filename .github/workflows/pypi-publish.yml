@@ -1,12 +1,10 @@
 name: Publish to PyPI
 
-# tag 自动触发 + 手动触发双通道。PyPI 侧需先配置 Trusted Publisher
-# （pending publisher：project=xenon-harness, owner=xianyu-sheng,
-#  repo=Xenon, workflow=pypi-publish.yml，environment 留空）。
+# 仅手动触发：用户决定暂不发布 PyPI（GitHub Releases 已挂 wheel，
+# 安装路径足够）。将来想发时：建项目 + 配 Trusted Publisher，再把
+# `push: tags: ["v*"]` 加回来；版本一致性校验步骤已就绪。
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
 
 jobs:
   pypi-publish:
