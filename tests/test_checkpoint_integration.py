@@ -12,7 +12,6 @@ import time
 import httpx
 
 # 添加项目路径
-sys.path.insert(0, "/home/xianyu-sheng/Xenon")
 
 from xenon.utils.partial_response import (
     ContinuationContext,

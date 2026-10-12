@@ -30,7 +30,7 @@ def _cmd_review(*, args: str, session_state: dict, **kwargs: Any) -> str:
         backup = Path(str(path) + ".bak")
         if not backup.exists():
             return (
-                f"❌ {path} 没有 .bak 备份（只有 edit_file 会产生备份；"
+                f"❌ {path} 没有 .bak 备份（edit_file 与覆盖式 write_file 会产生备份；"
                 "新写/覆盖的文件请用 git 或手动恢复）"
             )
         shutil.copy2(backup, path)

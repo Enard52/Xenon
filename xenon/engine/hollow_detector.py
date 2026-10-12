@@ -1,7 +1,7 @@
 """HollowDetector — 空洞回答检测（F2 / §Q2）。
 
 规范 Q2 的"15 正则 + 组合判定"：识别 LLM 输出"描述代替执行 / 套话堆砌 / 答非所问"
-的空洞回答，配合 BudgetManager.on_hollow_answer() 给补救轮次。
+的空洞回答，判定结果由回合级 TurnGate 消费（重试/熔断）。
 
 三类信号（任一成立即判空洞）：
 
@@ -152,8 +152,8 @@ class HollowDetector:
         hd = HollowDetector()
         result = hd.detect(final_answer, tool_call_count=len(tracker.calls))
         if result.is_hollow:
-            budget.on_hollow_answer()
-            messages.append({"role": "user", "content": result.hint()})
+            # 交由回合级 TurnGate 判定：fail（反馈重试）/ fuse（同因熔断）
+            ...
     """
 
     def __init__(

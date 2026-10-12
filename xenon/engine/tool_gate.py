@@ -8,7 +8,6 @@
 职责边界：
 1. 工具黑名单（tool_overrides.disabled）
 2. 参数校验级别（param_validation: strict/moderate/lenient）
-3. 证据链模式（evidence_mode: enforce/observe/disabled）
 4. 执行指标记录（拒绝次数、自动读取触发等）
 
 集成方式：
@@ -41,21 +40,12 @@ class ParamValidationLevel(str, Enum):
     LENIENT = "lenient"  # 不拦截，仅记录
 
 
-class EvidenceMode(str, Enum):
-    """证据链模式枚举。"""
-
-    ENFORCE = "enforce"  # 强制要求证据，缺失则拒绝
-    OBSERVE = "observe"  # 记录但不拒绝（默认）
-    DISABLED = "disabled"  # 完全禁用证据链
-
-
 @dataclass
 class ToolGateConfig:
     """单个工具的门控配置（用于 tool_overrides）。"""
 
     disabled: bool = False
     param_validation: ParamValidationLevel | None = None
-    evidence_mode: EvidenceMode | None = None
 
 
 # ── 指标记录 ──────────────────────────────────────────────
@@ -116,18 +106,15 @@ class ToolGate:
     def __init__(
         self,
         param_validation: ParamValidationLevel = ParamValidationLevel.MODERATE,
-        evidence_mode: EvidenceMode = EvidenceMode.OBSERVE,
         tool_overrides: dict[str, ToolGateConfig] | None = None,
     ):
         """初始化工具门控。
 
         Args:
             param_validation: 全局参数校验级别
-            evidence_mode: 全局证据链模式
             tool_overrides: 工具级覆盖配置
         """
         self.param_validation = param_validation
-        self.evidence_mode = evidence_mode
         self.tool_overrides = tool_overrides or {}
         self.metrics = ToolGateMetrics()
 
@@ -148,7 +135,6 @@ class ToolGate:
         """
         # 默认值
         param_validation = ParamValidationLevel.MODERATE
-        evidence_mode = EvidenceMode.OBSERVE
         tool_overrides: dict[str, ToolGateConfig] = {}
 
         # 优先检查 validation.strict（向后兼容）
@@ -170,16 +156,6 @@ class ToolGate:
                 except (ValueError, TypeError):
                     logger.warning(
                         "tool_gate.param_validation 值无效: %r，使用当前值", pv
-                    )
-
-            # 解析全局 evidence_mode
-            em = getattr(tool_gate_section, "evidence_mode", None)
-            if em:
-                try:
-                    evidence_mode = EvidenceMode(em)
-                except (ValueError, TypeError):
-                    logger.warning(
-                        "tool_gate.evidence_mode 值无效: %r，使用默认值 observe", em
                     )
 
             # 解析 tool_overrides
@@ -210,23 +186,10 @@ class ToolGate:
                                 pv_override,
                             )
 
-                    # evidence_mode 覆盖
-                    em_override = override_data.get("evidence_mode")
-                    if em_override:
-                        try:
-                            tool_config.evidence_mode = EvidenceMode(em_override)
-                        except (ValueError, TypeError):
-                            logger.warning(
-                                "tool_overrides.%s.evidence_mode 值无效: %r",
-                                tool_name,
-                                em_override,
-                            )
-
                     tool_overrides[tool_name] = tool_config
 
         return cls(
             param_validation=param_validation,
-            evidence_mode=evidence_mode,
             tool_overrides=tool_overrides,
         )
 
@@ -267,22 +230,6 @@ class ToolGate:
         if override and override.param_validation is not None:
             return override.param_validation
         return self.param_validation
-
-    def get_evidence_mode(self, tool_name: str) -> EvidenceMode:
-        """获取指定工具的证据链模式。
-
-        优先级：tool_overrides[tool_name] > 全局配置
-
-        Args:
-            tool_name: 工具名称
-
-        Returns:
-            该工具应使用的证据链模式
-        """
-        override = self.tool_overrides.get(tool_name)
-        if override and override.evidence_mode is not None:
-            return override.evidence_mode
-        return self.evidence_mode
 
     def is_tool_disabled(self, tool_name: str) -> bool:
         """检查工具是否被禁用（黑名单）。

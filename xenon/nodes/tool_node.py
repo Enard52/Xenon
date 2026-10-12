@@ -706,7 +706,11 @@ class ToolNode(
             # 确保路径以 / 结尾，便于组件匹配
             resolved_normalized = resolved_lower.rstrip("/") + "/"
             for sensitive in _SENSITIVE_PATHS:
-                sensitive_normalized = sensitive.lower().rstrip("/") + "/"
+                # Windows 路径条目同样统一为正斜杠形态（评审 P2-10：
+                # 反斜杠条目永远匹配不到已规范化的路径）。
+                sensitive_normalized = (
+                    sensitive.lower().replace("\\", "/").rstrip("/") + "/"
+                )
                 if (
                     resolved_normalized.startswith(sensitive_normalized)
                     or ("/" + sensitive_normalized.lstrip("/")) in resolved_normalized

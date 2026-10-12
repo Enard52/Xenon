@@ -4,7 +4,7 @@
 1. from_config 解析各种配置组合
 2. check_before 黑名单检查
 3. get_param_validation_level 工具级覆盖
-4. get_evidence_mode 工具级覆盖
+4. （evidence_mode 死配置已随评审清理移除）
 5. metrics 记录
 """
 
@@ -15,7 +15,6 @@ from typing import Any
 
 
 from xenon.engine.tool_gate import (
-    EvidenceMode,
     ParamValidationLevel,
     ToolGate,
     ToolGateConfig,
@@ -35,7 +34,6 @@ class MockToolGateSectionConfig:
     """模拟 ToolGateSectionConfig。"""
 
     param_validation: str = "moderate"
-    evidence_mode: str = "observe"
     tool_overrides: dict[str, Any] = field(default_factory=dict)
 
 
@@ -61,7 +59,6 @@ class TestToolGateFromConfig:
         gate = ToolGate.from_config(config)
 
         assert gate.param_validation == ParamValidationLevel.MODERATE
-        assert gate.evidence_mode == EvidenceMode.OBSERVE
         assert gate.tool_overrides == {}
 
     def test_from_config_strict_validation(self):
@@ -118,28 +115,18 @@ class TestToolGateFromConfig:
             gate.get_param_validation_level("write_file") == ParamValidationLevel.STRICT
         )
 
-    def test_from_config_evidence_mode(self):
-        """解析 evidence_mode 配置。"""
-        config = MockSystemConfig(
-            tool_gate=MockToolGateSectionConfig(evidence_mode="enforce"),
-        )
-        gate = ToolGate.from_config(config)
-
-        assert gate.evidence_mode == EvidenceMode.ENFORCE
 
     def test_from_config_invalid_values(self):
         """无效配置值应回退到默认值并记录警告。"""
         config = MockSystemConfig(
             tool_gate=MockToolGateSectionConfig(
                 param_validation="invalid_level",
-                evidence_mode="invalid_mode",
             ),
         )
         gate = ToolGate.from_config(config)
 
         # 应回退到默认值
         assert gate.param_validation == ParamValidationLevel.MODERATE
-        assert gate.evidence_mode == EvidenceMode.OBSERVE
 
 
 class TestToolGateCheckBefore:
@@ -214,28 +201,6 @@ class TestToolGateParamValidation:
             gate.get_param_validation_level("write_file") == ParamValidationLevel.STRICT
         )
 
-
-class TestToolGateEvidenceMode:
-    """测试 get_evidence_mode 工具级覆盖。"""
-
-    def test_evidence_mode_global_default(self):
-        """无覆盖时返回全局配置。"""
-        gate = ToolGate(evidence_mode=EvidenceMode.ENFORCE)
-
-        assert gate.get_evidence_mode("write_file") == EvidenceMode.ENFORCE
-        assert gate.get_evidence_mode("edit_file") == EvidenceMode.ENFORCE
-
-    def test_evidence_mode_tool_override(self):
-        """工具级覆盖应优先于全局配置。"""
-        gate = ToolGate(
-            evidence_mode=EvidenceMode.ENFORCE,
-            tool_overrides={
-                "read_file": ToolGateConfig(evidence_mode=EvidenceMode.DISABLED),
-            },
-        )
-
-        assert gate.get_evidence_mode("read_file") == EvidenceMode.DISABLED
-        assert gate.get_evidence_mode("write_file") == EvidenceMode.ENFORCE
 
 
 class TestToolGateMetrics:

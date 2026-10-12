@@ -49,6 +49,11 @@ dev = [
     # 不再钉死 Ruff 上限；版本单一来源是 xenon/__init__.py 的 __version__。
     "ruff>=0.16.10",
 ]
+clipboard = [
+    # clipboard_monitor 的懒加载依赖（未安装时该功能友好降级）
+    "pynput",
+    "Pillow",
+]
 
 [project.scripts]
 xenon = "xenon.main:cli"

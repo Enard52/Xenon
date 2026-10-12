@@ -109,6 +109,3 @@ class BreakerRegistry:
                 b.cooldown = b._base_cooldown
                 b._probing = False
 
-
-# 进程级共享注册表（四引擎默认共用，使断路状态跨 run 累积）
-GLOBAL_BREAKERS = BreakerRegistry()

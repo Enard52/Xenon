@@ -99,7 +99,7 @@
 
 | 项目 | 能力 |
 | --- | --- |
-| **Xenon** | `CircuitBreaker` 每工具独立断路器，`failure_threshold=3`（默认 3 连续失败）→ `OPEN` 状态熔断，`cooldown=30s` 冷却（half_open 失败翻倍，max 600s）；进程级 `GLOBAL_BREAKERS` 跨 run 累积。 |
+| **Xenon** | `CircuitBreaker` 每工具独立断路器，`failure_threshold=3`（默认 3 连续失败）→ `OPEN` 状态熔断，`cooldown=30s` 冷却（half_open 失败翻倍，max 600s）；每 ToolExecutor 实例独立注册表（同一引擎内跨 run 累积断路状态，保证测试隔离）。 |
 | 其它 4 项 | ❌ 都不做。 |
 
 **Xenon 优势**：**这是全表独有的生产级特性**。其他 4 个项目在 tool 失败时只重试或不重试，**没有熔断 + 指数退避**机制。Xenon 在工具反复失败时会进入 OPEN 状态直接拒绝请求，保护 LLM token 不被空转消耗。

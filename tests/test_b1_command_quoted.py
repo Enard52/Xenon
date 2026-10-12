@@ -187,3 +187,29 @@ class TestRegisterToolCredentialModules:
 
         ok, _ = _validate_register_module("xenon.utils.path_targets")
         assert ok is True
+
+
+class TestWindowsSensitivePaths:
+    """P2-10：Windows 敏感路径条目（反斜杠）必须真的命中。"""
+
+    def test_windows_drive_paths_are_sensitive(self, tmp_path):
+        from xenon.nodes.tool_node import ToolNode, SecurityError
+        from xenon.nodes.path_targets import resolve_target_path
+
+        node = ToolNode.__new__(ToolNode)
+        node.security_enabled = True
+        # 直接复用黑名单匹配逻辑：路径统一为正斜杠后命中 c:\windows
+        from xenon.nodes import tool_node as tn
+
+        resolved = resolve_target_path(r"C:\Windows\System32\evil.txt", cwd=tmp_path)
+        with pytest.raises(SecurityError, match="敏感路径"):
+            for sensitive in tn._SENSITIVE_PATHS:
+                sensitive_normalized = (
+                    sensitive.lower().replace("\\", "/").rstrip("/") + "/"
+                )
+                resolved_normalized = str(resolved).lower().replace("\\", "/").rstrip("/") + "/"
+                if (
+                    resolved_normalized.startswith(sensitive_normalized)
+                    or ("/" + sensitive_normalized.lstrip("/")) in resolved_normalized
+                ):
+                    raise SecurityError(f"禁止写入系统敏感路径: {resolved}")

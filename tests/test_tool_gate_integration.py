@@ -4,7 +4,7 @@
 1. ToolExecutor 自动创建 ToolGate
 2. 黑名单工具被真实拦截
 3. 参数校验三级与 ToolGate 集成
-4. evidence_mode 集成（仅验证配置传递，实际行为由 evidence_gate 负责）
+4. （evidence_mode 死配置已随评审清理移除）
 5. metrics 在真实执行流程中的记录
 """
 
@@ -18,7 +18,6 @@ from typing import Any
 
 from xenon.engine.context import AgentContext
 from xenon.engine.tool_gate import (
-    EvidenceMode,
     ParamValidationLevel,
     ToolGate,
     ToolGateConfig,
@@ -39,7 +38,6 @@ class MockToolGateSectionConfig:
     """模拟 ToolGateSectionConfig。"""
 
     param_validation: str = "moderate"
-    evidence_mode: str = "observe"
     tool_overrides: dict[str, Any] = field(default_factory=dict)
 
 
@@ -284,22 +282,6 @@ class TestToolExecutorParamValidationIntegration:
         assert result2.error is not None
         assert "幻觉" in result2.error or "可疑" in result2.error
 
-
-class TestToolExecutorEvidenceModeIntegration:
-    """测试 evidence_mode 配置传递（实际行为由 evidence_gate 负责）。"""
-
-    def test_evidence_mode_configuration_passed(self):
-        """ToolGate 的 evidence_mode 配置应正确传递。"""
-        gate = ToolGate(
-            evidence_mode=EvidenceMode.ENFORCE,
-            tool_overrides={
-                "read_file": ToolGateConfig(evidence_mode=EvidenceMode.DISABLED),
-            },
-        )
-
-        # 验证配置正确
-        assert gate.get_evidence_mode("write_file") == EvidenceMode.ENFORCE
-        assert gate.get_evidence_mode("read_file") == EvidenceMode.DISABLED
 
 
 class TestToolExecutorMetricsIntegration:
