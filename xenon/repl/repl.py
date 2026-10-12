@@ -569,7 +569,13 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
             logger.debug("自动保存失败（不影响当前会话）: %s", exc)
 
     def _check_auto_resume(self) -> None:
-        """v0.4.0 Step 14: 启动时检查可恢复的会话。"""
+        """v0.4.0 Step 14: 启动时检查可恢复的会话。
+
+        启动即恢复（--resume / 门前进会话选择器）时不再提示 /resume——
+        会话正在恢复中，提示是噪音。
+        """
+        if getattr(self, "_startup_resume", None):
+            return
         try:
             from xenon.repl.session import list_sessions, get_session_age
 

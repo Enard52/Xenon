@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+- 启动会话选择器：`xenon` 进门之前先选会话（pi/Claude Code 式体验），
+  数字选择历史会话或新对话；`xenon resume` 直接恢复最近；非交互终端自动跳过。
+- `xenon resume [<序号|名称>|list]` 位置参数支持。
+- autosave 空会话不再覆盖旧自动保存（防启动即退顶掉上一段对话）。
+- credentials.yaml 旧版扁平格式（`provider: key`）自动按内置目录派生默认模型。
+
 ## [0.9.2] — 2026-10-12
 
 ### 三层可信度模型（定位收敛）

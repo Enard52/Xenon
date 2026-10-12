@@ -55,6 +55,8 @@ xenon
 
 常用命令：`/evidence`（L0 证据账本自证）`/plan` `/goal` `/review` `/rewind <n>` `/fork [n]` `/compact` `/sessions` `/permissions` `/tools` `/help`
 
+启动即恢复：直接敲 `xenon` 会先弹**会话选择器**（数字选历史会话或新对话）；也可以 `xenon resume`（恢复最近）`xenon resume <序号>` `xenon --resume`（列表）。非交互终端自动跳过选择器。
+
 ## 会话状态机（每回合）
 
 ```

@@ -87,3 +87,88 @@ def test_providers_section_still_wins_over_flat(tmp_path):
     registry.load_from_credentials(credentials_path=creds)
     ids = [m.model_id for m in registry.models.values()]
     assert ids == ["deepseek/deepseek-v4-flash"]
+
+
+def test_startup_picker_returns_chosen_index(monkeypatch, capsys):
+    """门前进会话选择器：选 1 → 返回 '1'；选 0 → None（新对话）。"""
+
+    import xenon.main as main_mod
+    import xenon.repl.session as session_mod
+    import rich.prompt as rich_prompt
+
+    fake_sessions = [
+        {
+            "name": "_auto",
+            "messages": 3,
+            "paradigm": "direct",
+            "saved_at": "2026-10-12T12:00:00",
+        }
+    ]
+    monkeypatch.setattr(session_mod, "list_sessions", lambda: fake_sessions)
+    monkeypatch.setattr(session_mod, "get_session_age", lambda s: "刚刚")
+
+    class _Stdin:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(main_mod.sys, "stdin", _Stdin())
+
+    class _FakeIntPrompt:
+        @staticmethod
+        def ask(prompt, choices=None, default=None, show_default=True):
+            return default
+
+    monkeypatch.setattr(rich_prompt, "IntPrompt", _FakeIntPrompt)
+    assert main_mod._interactive_session_picker() == "1"
+
+
+def test_startup_picker_new_conversation(monkeypatch):
+    import xenon.main as main_mod
+    import xenon.repl.session as session_mod
+    import rich.prompt as rich_prompt
+
+    monkeypatch.setattr(session_mod, "list_sessions", lambda: [{"name": "_auto", "messages": 1}])
+    monkeypatch.setattr(session_mod, "get_session_age", lambda s: "刚刚")
+
+    class _Stdin:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(main_mod.sys, "stdin", _Stdin())
+
+    class _FakeIntPrompt:
+        @staticmethod
+        def ask(prompt, choices=None, default=None, show_default=True):
+            return 0
+
+    monkeypatch.setattr(rich_prompt, "IntPrompt", _FakeIntPrompt)
+    assert main_mod._interactive_session_picker() is None
+
+
+def test_startup_picker_skipped_when_not_tty(monkeypatch):
+    import xenon.main as main_mod
+    import xenon.repl.session as session_mod
+
+    called = []
+    monkeypatch.setattr(session_mod, "list_sessions", lambda: called.append(1) or [])
+
+    class _Stdin:
+        def isatty(self):
+            return False
+
+    monkeypatch.setattr(main_mod.sys, "stdin", _Stdin())
+    assert main_mod._interactive_session_picker() is None
+    assert called == []  # 非 TTY 连会话列表都不读
+
+
+def test_startup_picker_env_kill_switch(monkeypatch):
+    import xenon.main as main_mod
+
+    monkeypatch.setenv("XENON_NO_SESSION_PICKER", "1")
+
+    class _Stdin:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(main_mod.sys, "stdin", _Stdin())
+    assert main_mod._interactive_session_picker() is None

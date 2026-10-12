@@ -198,6 +198,8 @@ def cli() -> None:
         _cmd_run(args)
 
     elif cmd == "chat":
+        if args.resume is None:
+            args.resume = _interactive_session_picker()
         _cmd_chat(args)
 
     elif cmd == "resume":
@@ -230,8 +232,59 @@ def cli() -> None:
         _cmd_run(args)
 
     else:
-        # 默认：直接启动 REPL
+        # 默认：直接启动 REPL（进门之前先选会话，pi/Claude Code 式体验）
+        if args.resume is None:
+            args.resume = _interactive_session_picker()
         _cmd_chat(args)
+
+
+def _interactive_session_picker() -> str | None:
+    """门前进会话选择器：有已保存会话时，先让用户选再进 REPL。
+
+    返回 resume 目标序号（str）或 None（新对话）。
+    只在交互终端（stdin 是 TTY）且未显式 --resume/resume 时启用；
+    XENON_NO_SESSION_PICKER=1 可关闭（恢复旧行为）。
+    """
+    import os as _os
+
+    if _os.environ.get("XENON_NO_SESSION_PICKER", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return None
+    if not sys.stdin.isatty():
+        return None  # 管道/CI/重定向：不阻塞、不询问
+
+    from xenon.repl.session import get_session_age, list_sessions
+    from rich.prompt import IntPrompt
+
+    sessions = list_sessions()
+    if not sessions:
+        return None
+
+    console.print("\n[bold]📂 恢复会话[/bold] [dim]（数字选择，Enter 确认）[/dim]")
+    console.print("  [bold cyan]0[/bold cyan]  🆕 新对话")
+    for i, s in enumerate(sessions[:9], 1):
+        name = "[上次自动保存]" if s["name"].startswith("_auto") else s["name"]
+        age = get_session_age(s) or str(s.get("saved_at", ""))[:16]
+        console.print(
+            f"  [bold cyan]{i}[/bold cyan]  {name} · {s['messages']} 条消息"
+            f" · {s.get('paradigm', '')} · {age}"
+        )
+
+    try:
+        choice = IntPrompt.ask(
+            "选择会话",
+            choices=[str(i) for i in range(0, min(len(sessions), 9) + 1)],
+            default=1,
+            show_default=False,
+        )
+    except (KeyboardInterrupt, EOFError):
+        return None
+    if choice == 0:
+        return None
+    return str(choice)
 
 
 def _print_session_list() -> None:
