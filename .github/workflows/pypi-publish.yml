@@ -1,9 +1,10 @@
 name: Publish to PyPI
 
+# 暂改为手动触发：PyPI 上还没有 xenon-harness 项目（未配置 Trusted
+# Publisher），tag 自动触发只会产生必红的运行。待 PyPI 项目建立并配好
+# OIDC 后，改回 `push: tags: ["v*"]` 即可自动发布。
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 jobs:
   pypi-publish:

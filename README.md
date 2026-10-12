@@ -34,6 +34,8 @@
 
 ## 快速开始
 
+当前版本：**v0.9.2**（版本单一来源 `xenon.__version__`，历史见 [CHANGELOG](CHANGELOG.md)，发行包见 [GitHub Releases](https://github.com/xianyu-sheng/Xenon/releases)）。
+
 ```bash
 # 克隆源码本地安装（editable，源码即运行版）
 git clone https://github.com/xianyu-sheng/Xenon.git
