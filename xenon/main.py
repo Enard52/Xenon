@@ -200,6 +200,20 @@ def cli() -> None:
     elif cmd == "chat":
         _cmd_chat(args)
 
+    elif cmd == "resume":
+        # 位置参数形态：xenon resume → 恢复最近一次自动保存；
+        # xenon resume <序号|名称> → 恢复指定；xenon resume list → 列表。
+        target = args.workflow_path
+        if target is not None and str(target).lower() == "list":
+            _print_session_list()
+            return
+        if target is not None:
+            resume_arg = _validate_resume_target(str(target))
+        else:
+            resume_arg = _validate_resume_target("1")  # 列表第一个=最近
+        args.resume = resume_arg
+        _cmd_chat(args)
+
     elif cmd == "models":
         sub = args.workflow_path
         if sub == "import":

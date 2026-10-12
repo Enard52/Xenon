@@ -250,3 +250,51 @@ class TestSessionNamePathTraversal:
         assert load_session("t1")["name"] == "t1"
         save_session("我的会话-01", history=[], context_store={}, model_config={})
         assert load_session("我的会话-01")["name"] == "我的会话-01"
+
+
+class TestAutoSaveGuard:
+    """空会话不覆盖旧自动保存（启动即退不再顶掉上一段对话）。"""
+
+    def test_empty_session_does_not_clobber_previous_autosave(
+        self, tmp_path, monkeypatch
+    ):
+        import xenon.repl.session as mod
+
+        monkeypatch.setattr(mod, "SESSIONS_DIR", tmp_path)
+        first = auto_save(
+            history=[
+                {"role": "user", "content": "调研海能达"},
+                {"role": "assistant", "content": "结论是……"},
+            ],
+            context_store={},
+            model_config={},
+        )
+        assert first is not None
+        before = first.read_text(encoding="utf-8")
+
+        # 新会话只有一条用户消息（尚无回复）→ 不得覆盖
+        skipped = auto_save(
+            history=[{"role": "user", "content": "hello"}],
+            context_store={},
+            model_config={},
+        )
+        assert skipped is None
+        assert first.read_text(encoding="utf-8") == before
+
+    def test_session_with_reply_still_overwrites(self, tmp_path, monkeypatch):
+        import xenon.repl.session as mod
+
+        monkeypatch.setattr(mod, "SESSIONS_DIR", tmp_path)
+        auto_save(history=[{"role": "user", "content": "a"}], context_store={}, model_config={})
+        # 首轮自动保存：无回复且无旧文件 → 正常写入
+        first = auto_save(
+            history=[
+                {"role": "user", "content": "a"},
+                {"role": "assistant", "content": "b"},
+            ],
+            context_store={},
+            model_config={},
+        )
+        assert first is not None
+        data = json.loads(first.read_text(encoding="utf-8"))
+        assert len(data["history"]) == 2

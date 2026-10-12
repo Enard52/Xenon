@@ -435,6 +435,10 @@ class ModelRegistry:
 
         providers = creds.get("providers", {})
         if not providers:
+            # 旧版扁平格式：credentials.yaml 直接写 ``deepseek: sk-...``（无
+            # providers 段）。用内置厂商目录派生默认模型，让丢失 models.yaml
+            # 的用户重启后仍能拿到可用模型，而不是「未配置」。
+            self._register_flat_credential_models(creds)
             return
 
         # 去重按「裸模型名」而非完整 model_id。同一个模型在 models.yaml 里可能
@@ -507,3 +511,34 @@ class ModelRegistry:
                 # 同一批次内也要去重：一家中转站可能在多个 provider 段里
                 # 重复列出同一个模型。
                 existing_by_bare[bare_name] = registered
+
+    def _register_flat_credential_models(self, creds: dict[str, Any]) -> None:
+        """扁平 credentials（``provider: key``）→ 内置目录派生默认模型。"""
+        from xenon.repl.provider_registry import PROVIDERS
+
+        for provider_key, value in creds.items():
+            if provider_key == "providers" or not isinstance(value, str):
+                continue
+            token = value.strip()
+            if not token:
+                continue
+            info = PROVIDERS.get(provider_key)
+            if info is None:
+                continue  # 非内置厂商（中转站等）无离线目录，不能猜
+            for model_name in info.models:
+                if model_name.rsplit("/", 1)[-1].lower() in {
+                    m.model_id.rsplit("/", 1)[-1].lower() for m in self.models.values()
+                }:
+                    continue
+                alias = model_name.replace(".", "-").replace("/", "-")
+                try:
+                    self.add_model(
+                        model_id=f"{provider_key}/{model_name}",
+                        alias=alias,
+                        api_key=token,
+                        base_url=info.base_url,
+                        weight=1.0,
+                        derived=True,
+                    )
+                except Exception:  # noqa: BLE001 — 单个模型注册失败不影响其他
+                    continue

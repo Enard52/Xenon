@@ -399,6 +399,21 @@ def auto_save(
         sessions_dir = _ensure_sessions_dir()
         filepath = sessions_dir / f"{AUTO_SESSION_NAME}.json"
 
+        # 空会话不覆盖旧自动保存：启动后直接退出（或还没收到任何回复）时，
+        # 不能把上一段有内容的对话顶掉。判断标准：至少有一条 assistant 回复，
+        # 或有在途工具执行检查点（后者是回合中途的持久化，必须写）。
+        if filepath.exists():
+            has_exchange = any(
+                isinstance(m, dict) and m.get("role") == "assistant"
+                for m in history
+            )
+            has_checkpoint = bool(
+                isinstance(context_store, dict)
+                and context_store.get("_tool_execution_checkpoint")
+            )
+            if not has_exchange and not has_checkpoint:
+                return None
+
         now = _time.time()
         # _auto 每轮对话都被覆盖写，热度必须延续，否则计数永远是 0。
         prev_accessed, prev_count = _read_access_stats(filepath)
