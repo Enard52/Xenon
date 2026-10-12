@@ -75,6 +75,9 @@ omniagent.ico
 # Claude Code local config（用户级 sub-agent 定义不应进公共仓库）
 .claude/
 
+# 项目级 hooks（克隆仓库自带 hooks 需显式 /trust-hooks 信任，不进仓库）
+.xenon/
+
 # 本地内容创作草稿（掘金专栏，不随 Xenon 源码发布）
 docs/juejin/
 

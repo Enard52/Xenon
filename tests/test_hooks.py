@@ -148,3 +148,65 @@ def test_executor_blocks_on_pretooluse_exit_2(monkeypatch, tmp_path):
     assert result.success is False
     assert "hook 阻断" in result.observation
     assert _FakeNode.script  # 工具体没有执行
+
+
+def test_project_hooks_require_explicit_trust(tmp_path, monkeypatch):
+    """H-5：项目 hooks 未信任前不加载；/trust-hooks 后生效。"""
+
+    monkeypatch.delenv("XENON_HOOKS", raising=False)
+    monkeypatch.setenv("XENON_HOOKS_TRUST_STORE", str(tmp_path / "trusted.json"))
+    import sys as _sys
+
+    block = tmp_path / "block.py"
+    block.write_text(
+        'import sys; sys.stderr.write("policy says no"); sys.exit(2)',
+        encoding="utf-8",
+    )
+    proj = _cfg(
+        tmp_path,
+        {"PreToolUse": [{"match": "write_file", "command": f'"{_sys.executable}" "{block}"'}]},
+    )
+    runner = HookRunner(project_dir=proj)
+    assert runner.project_hooks_pending is True
+    # 未信任：hook 未加载，不阻断
+    assert runner.run("PreToolUse", "write_file", {}).blocked is False
+    # 显式信任后：hook 加载，exit 2 阻断
+    assert runner.trust_project_hooks() is True
+    assert runner.project_hooks_pending is False
+    assert runner.run("PreToolUse", "write_file", {}).blocked is True
+
+
+def test_project_hooks_content_change_requires_retrust(tmp_path, monkeypatch):
+    """指纹绑定内容：文件改了要重新信任。"""
+
+    monkeypatch.delenv("XENON_HOOKS", raising=False)
+    monkeypatch.setenv("XENON_HOOKS_TRUST_STORE", str(tmp_path / "trusted.json"))
+    proj = _cfg(tmp_path, {"PreToolUse": []})
+    runner = HookRunner(project_dir=proj)
+    assert runner.trust_project_hooks() is True
+    proj.write_text("hooks: {PreToolUse: []}\n", encoding="utf-8")
+    runner.reload()
+    assert runner.project_hooks_pending is True
+
+
+def test_pretooluse_timeout_is_fail_closed(tmp_path):
+    """H-5：PreToolUse 超时不能当成“同意”——fail-closed 阻断。"""
+
+    import sys as _sys
+
+    slow = tmp_path / "slow.py"
+    slow.write_text("import time; time.sleep(5)", encoding="utf-8")
+    runner = HookRunner(
+        user_dir=_cfg(
+            tmp_path,
+            {
+                "PreToolUse": [
+                    {"match": "*", "command": f'"{_sys.executable}" "{slow}"'}
+                ]
+            },
+        ),
+        timeout=0.2,
+    )
+    outcome = runner.run("PreToolUse", "write_file", {})
+    assert outcome.blocked is True
+    assert "超时" in outcome.message

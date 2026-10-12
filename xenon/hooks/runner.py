@@ -18,6 +18,7 @@ Every hook receives one JSON object on stdin:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -41,22 +42,95 @@ def _disabled() -> bool:
     return os.environ.get("XENON_HOOKS") == "0"
 
 
+def _trust_store_path() -> Path:
+    override = os.environ.get("XENON_HOOKS_TRUST_STORE", "").strip()
+    if override:
+        return Path(override)
+    return Path.home() / ".xenon" / "trusted_hooks.json"
+
+
+def _fingerprint(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _read_trust_store() -> dict:
+    try:
+        data = json.loads(_trust_store_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_trust_store(data: dict) -> None:
+    try:
+        _trust_store_path().parent.mkdir(parents=True, exist_ok=True)
+        _trust_store_path().write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as exc:  # pragma: no cover - platform dependent
+        logger.debug("信任库写入失败（已忽略）: %s", exc)
+
+
+def _is_trusted(path: Path) -> bool:
+    """项目 hooks 文件是否已被显式信任（指纹匹配）。"""
+    try:
+        return _read_trust_store().get(str(path)) == _fingerprint(path)
+    except OSError:
+        return False
+
+
 @dataclass
 class HookRunner:
-    """Loads hook config and runs matching commands."""
+    """Loads hook config and runs matching commands.
+
+    项目级 hooks（<cwd>/.xenon/hooks.yaml）需要显式信任（指纹 + 同意）：
+    克隆下来的仓库不能无审批执行任意命令。用户级 hooks 始终信任。
+    """
 
     user_dir: Path | None = None
     project_dir: Path | None = None
     timeout: float = 10.0
     session_id: str = ""
     _hooks: dict[str, list[dict]] = field(default_factory=dict)
+    _project_hooks_pending: bool = False
 
     def __post_init__(self) -> None:
+        self.reload()
+
+    def reload(self) -> None:
         if _disabled():
             self._hooks = {}
             return
-        for directory in (self.user_dir, self.project_dir):
-            self._load(directory)
+        self._hooks = {}
+        self._project_hooks_pending = False
+        self._load(self.user_dir)
+        # H-5：项目 hooks 需显式信任——克隆仓库自带 hooks.yaml 时不得
+        # 无审批执行。未信任则跳过加载并置 pending，由 REPL 提示用户。
+        if self.project_dir is not None and self.project_dir.exists():
+            if _is_trusted(self.project_dir):
+                self._load(self.project_dir)
+            else:
+                self._project_hooks_pending = True
+                logger.info(
+                    "项目 hooks 未信任，已跳过加载: %s（/trust-hooks 信任后启用）",
+                    self.project_dir,
+                )
+
+    @property
+    def project_hooks_pending(self) -> bool:
+        """项目 hooks 存在但未被信任（REPL 据此提示用户）。"""
+        return self._project_hooks_pending
+
+    def trust_project_hooks(self) -> bool:
+        """显式信任当前项目 hooks（记录指纹）并加载。返回是否成功。"""
+        if self.project_dir is None or not self.project_dir.exists():
+            return False
+        store = _read_trust_store()
+        store[str(self.project_dir)] = _fingerprint(self.project_dir)
+        _write_trust_store(store)
+        self._project_hooks_pending = False
+        self._load(self.project_dir)
+        return True
 
     def _load(self, directory: Path | None) -> None:
         if directory is None or not directory.exists():
@@ -130,9 +204,15 @@ class HookRunner:
                 )
             except subprocess.TimeoutExpired:
                 messages.append(f"hook 超时: {entry['command']}")
+                # H-5：PreToolUse 无法在时限内给出策略结论 → fail-closed
+                # 阻断（旧行为放行，等于把超时当成“同意”）。
+                if event == "PreToolUse":
+                    blocked = True
                 continue
             except OSError as exc:
                 messages.append(f"hook 启动失败: {exc}")
+                if event == "PreToolUse":
+                    blocked = True
                 continue
             stderr = (proc.stderr or "").strip()
             if event == "PreToolUse":

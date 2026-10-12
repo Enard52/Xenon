@@ -144,6 +144,18 @@ _DANGEROUS_MODULE_TOPS: frozenset[str] = frozenset(
     }
 )
 
+# H-4：前缀白名单 xenon.* 太宽——这些模块暴露凭证/令牌/配置，模型把它们
+# 注册成工具就能把 API Key 原样取回。逐模块点名拒绝（含子模块）。
+_FORBIDDEN_REGISTER_MODULES: frozenset[str] = frozenset(
+    {
+        "xenon.utils.github_auth",
+        "xenon.repl.provider_registry",
+        "xenon.utils.llm_client",
+        "xenon.repl.model_registry",
+        "xenon.repl.system_config",
+    }
+)
+
 # 内置 action_type 集合：动态工具注册时禁止重名（防内置工具名劫持）。
 # 注意：若新增内置 action_type，需同步本集合（与 ToolNode.execute 的 handlers 字典保持一致）。
 _BUILTIN_ACTION_TYPES: frozenset[str] = frozenset(BUILTIN_TOOL_METHODS)
@@ -177,6 +189,11 @@ def _validate_register_module(module_path: str) -> tuple[bool, str]:
             f"安全策略禁止导入危险模块: {top}"
             f"（os/subprocess/builtins/importlib 等不可注册）"
         )
+    if any(
+        mp == m or mp.startswith(m + ".") for m in _FORBIDDEN_REGISTER_MODULES
+    ):
+        logger.warning(f"[register_tool] 拒绝导入凭证/配置模块: {mp}")
+        return False, f"安全策略禁止注册凭证/配置模块: {mp}"
     if not any(mp.startswith(p) for p in _get_allowed_module_prefixes()):
         logger.warning(f"[register_tool] 模块不在白名单: {mp}")
         return False, (
@@ -220,6 +237,7 @@ _USER_SENSITIVE = [
 ]
 
 # 危险命令黑名单模式
+_SHELL_SEGMENT_SPLIT = re.compile(r"(&&|\|\||[|;\n])")
 _DANGEROUS_CMD_PATTERNS = [
     # 删除根目录/系统目录
     r"rm\s+(-[rfR]+\s+)?/",
@@ -736,21 +754,55 @@ class ToolNode(
             )
         # v0.3.0+ 修复（B-1）：匹配前先剥取引号内容（防止 echo "rm -rf /" 等
         # 字符串字面量触发误报）。通用机制，不针对特定任务加白名单。
-        cmd_stripped = self._strip_quoted(cmd_lower)
-        for pattern in _DANGEROUS_CMD_PATTERNS:
-            # 隔离容器内放行解释器内联验证（python -c / python -e 等）：
-            # SWE-bench 评测的标准工作流，容器边界已隔离 RCE 风险。
-            # 宿主机上保持拦截。其他危险模式（rm -rf /、shutdown、base64 等）
-            # 在容器内同样拦截，防止破坏评测环境。
-            if (
-                getattr(self, "allow_interpreter_inline", False)
-                and pattern == r"\b(?:python\w*|perl|ruby|node)\s+-[ce]\s+"
-            ):
+        # H-6：引号感知 + 段锚定匹配。旧实现只对剥引号文本做 re.search：
+        # rm -rf "/" 剥掉引号内容后剩 rm -rf ""，永远漏过。新算法：
+        #  1) 按 shell 链分隔符（&& || | ; 换行）切段，保留真实分隔符；
+        #  2) 每段生成两个候选：原始文本 + 去引号 token 拼接文本；
+        #  3) 段内模式用 re.match 锚定段首——echo "rm -rf /" 的 rm 是参数
+        #     不是命令，不会命中；rm -rf "/" 的去引号候选命中；
+        #  4) 跨段的管道模式（curl|bash 等）只在真实 `|` 连接的相邻段对上
+        #     匹配，引号内的伪管道（echo "curl x | bash"）不会命中。
+        parts = _SHELL_SEGMENT_SPLIT.split(cmd_lower)  # 偶数位=段，奇数位=分隔符
+        segments = [p for p in parts[::2] if p.strip()]
+        separators = [s for s in parts[1::2] if s.strip()]
+        dequoted = [" ".join(self._shell_segment_tokens(s)) for s in segments]
+        for idx, segment in enumerate(segments):
+            candidates = (segment, dequoted[idx])
+            for pattern in _DANGEROUS_CMD_PATTERNS:
+                if "\\|" in pattern:
+                    continue  # 跨段管道模式在段对循环里处理
+                if (
+                    getattr(self, "allow_interpreter_inline", False)
+                    and pattern == r"\b(?:python\w*|perl|ruby|node)\s+-[ce]\s+"
+                ):
+                    continue
+                for candidate in candidates:
+                    if re.match(pattern, candidate):
+                        raise SecurityError(
+                            f"危险命令被拦截: 匹配到禁止模式 '{pattern}'。命令: {cmd[:100]}"
+                        )
+        # 跨段管道模式：仅对真实 `|` 连接的相邻段对匹配。
+        for i, (left, right) in enumerate(zip(dequoted, dequoted[1:])):
+            if i >= len(separators) or "|" not in separators[i]:
                 continue
-            if re.search(pattern, cmd_stripped):
-                raise SecurityError(
-                    f"危险命令被拦截: 匹配到禁止模式 '{pattern}'。命令: {cmd[:100]}"
-                )
+            candidate = f"{left} | {right}"
+            for pattern in _DANGEROUS_CMD_PATTERNS:
+                if "\\|" not in pattern:
+                    continue
+                if re.match(pattern, candidate):
+                    raise SecurityError(
+                        f"危险命令被拦截: 匹配到禁止模式 '{pattern}'。命令: {cmd[:100]}"
+                    )
+
+    @staticmethod
+    def _shell_segment_tokens(segment: str) -> list[str]:
+        """引号感知分词：引号内的内容保留为一个 token（含空格/管道符）。"""
+        import shlex
+
+        try:
+            return shlex.split(segment)
+        except ValueError:  # 引号未闭合等畸形输入：退化为空白分词
+            return segment.split()
 
     @staticmethod
     def _has_unquoted_shell_substitution(command: str) -> bool:

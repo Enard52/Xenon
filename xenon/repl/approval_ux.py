@@ -134,6 +134,21 @@ class ApprovalUxMixin:
         return {"approved": False, "feedback": "用户驳回，请修改计划后重新提交"}
 
 
+    def _approval_key(self, tool_name: str, params: dict | None) -> tuple:
+        """H-7：allowed-once 绑定 (工具, 目标路径集合)，而非工具名。
+
+        同一轮里对同一工具的不同路径仍需分别询问；同工具同路径才免问。
+        """
+        from xenon.nodes.approval_policy import write_targets_for
+
+        try:
+            targets = tuple(
+                sorted(str(p) for p in (write_targets_for(tool_name, params or {}) or []))
+            )
+        except Exception:  # noqa: BLE001 — 目标解析失败按“无目标”处理，保守询问
+            targets = ()
+        return (tool_name, targets)
+
     def _confirm_tool(
         self, tool_name: str, params: dict, risk: str
     ) -> tuple[bool, str]:
@@ -156,7 +171,7 @@ class ApprovalUxMixin:
         # 边界审批已经处理过（TTL 规则或本轮 allowed-once）时不再重复询问。
         if self._approval_rules.is_allowed(tool_name):
             return True, ""
-        if tool_name in self._boundary_approved_once:
+        if self._approval_key(tool_name, params) in self._boundary_approved_once:
             return True, ""
 
         outcome = self._confirm_tool_approval(
@@ -236,7 +251,7 @@ class ApprovalUxMixin:
                     return APPROVAL_CANCELLED
         if choice == "a":
             ttl = self._approval_rules.allow(tool_name)
-            self._boundary_approved_once.add(tool_name)
+            self._boundary_approved_once.add(self._approval_key(tool_name, params))
             console.print(
                 f"[dim]· 本会话 {ttl / 60:.0f} 分钟内自动允许 {tool_name}"
             )
@@ -244,7 +259,7 @@ class ApprovalUxMixin:
                 callback.resume_after_prompt(tool_name, params)
             return APPROVAL_ALLOWED_ONCE
         if choice == "y":
-            self._boundary_approved_once.add(tool_name)
+            self._boundary_approved_once.add(self._approval_key(tool_name, params))
             console.print("[dim]· 已授权本次操作[/dim]")
             if hasattr(callback, "resume_after_prompt"):
                 callback.resume_after_prompt(tool_name, params)

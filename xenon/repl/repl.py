@@ -903,6 +903,14 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
             # v0.4.0 Step 14: 检查可恢复的会话
             self._check_auto_resume()
 
+            # H-5：项目 hooks 未信任时醒目提醒（克隆仓库不能无审批执行）
+            if getattr(self._hook_runner, "project_hooks_pending", False):
+                console.print(
+                    "\n[yellow]⚠️ 检测到项目 .xenon/hooks.yaml（未信任，已跳过）。[/yellow]"
+                    "\n[dim]信任并启用: [bold]/trust-hooks[/bold]；"
+                    "信任指纹记录在 ~/.xenon/trusted_hooks.json[/dim]"
+                )
+
             # 初始化系统消息
             if self.system_prompt:
                 self.ctx_mgr.add_system_message(self.system_prompt)

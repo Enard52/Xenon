@@ -281,7 +281,8 @@ def test_legacy_gate_skips_when_boundary_approved_this_turn(monkeypatch, tmp_pat
     repl = _make_repl(tmp_path)
     _quiet_config(monkeypatch)
     monkeypatch.setattr(sys, "stdin", _Tty())
-    repl._boundary_approved_once.add("command")
+    # H-7：本轮授权按 (工具, 目标) 记录
+    repl._boundary_approved_once.add(repl._approval_key("command", {"command": "echo hi"}))
     monkeypatch.setattr(
         "xenon.repl.repl.Prompt.ask", lambda *a, **k: pytest.fail("不应重复询问")
     )
@@ -308,7 +309,9 @@ def test_boundary_approval_records_allowed_once_and_uses_typed_prompt(
     outcome = repl._confirm_tool_approval("command", {"command": "echo hi"})
 
     assert outcome == APPROVAL_ALLOWED_ONCE
-    assert "command" in repl._boundary_approved_once
+    assert repl._approval_key("command", {"command": "echo hi"}) in (
+        repl._boundary_approved_once
+    )
     assert seen["prompt"] == "选择"
 
 
@@ -329,3 +332,25 @@ def test_command_with_workspace_file_path_still_prompts(monkeypatch, tmp_path):
     )
     assert asked, "命令必须走审批面板，带工作区内 file_path 也不例外"
     assert outcome == APPROVAL_ALLOWED_ONCE
+
+
+def test_allowed_once_scoped_to_target_paths(monkeypatch, tmp_path):
+    """H-7：y 授权绑定 (工具, 目标)——同工具不同路径要重新询问。"""
+
+    repl = _make_repl(tmp_path)
+    _quiet_config(monkeypatch)
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    asked = []
+    monkeypatch.setattr(
+        "xenon.repl.repl.Prompt.ask", lambda *a, **k: asked.append(1) or "y"
+    )
+    outside = tmp_path.parent
+    p1, p2 = str(outside / "x1.txt"), str(outside / "x2.txt")
+    # 走真实入口 _confirm_tool（先查本轮授权集再进面板）
+    assert repl._confirm_tool("write_file", {"file_path": p1}, "HIGH")[0] is True
+    # 同工具、不同路径 → 必须再问
+    assert repl._confirm_tool("write_file", {"file_path": p2}, "HIGH")[0] is True
+    assert len(asked) == 2
+    # 同工具、同路径 → 本轮免问
+    assert repl._confirm_tool("write_file", {"file_path": p1}, "HIGH")[0] is True
+    assert len(asked) == 2
