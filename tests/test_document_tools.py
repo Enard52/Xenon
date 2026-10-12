@@ -172,6 +172,40 @@ def test_parse_docx(tmp_path) -> None:
     assert "世界" in text
 
 
+def test_parse_xlsx_respects_row_and_column_bounds(tmp_path) -> None:
+    target = tmp_path / "bounded.xlsx"
+    _make_xlsx(target)
+
+    text, _meta = parse_document(target, max_rows=1, max_cols=1)
+
+    assert "name" in text
+    assert "value" not in text
+    assert "42" not in text
+
+
+def test_parse_biff8_respects_row_and_column_bounds(tmp_path) -> None:
+    target = tmp_path / "bounded.et"
+    _make_ole2_et(target)
+
+    text, meta = parse_document(target, max_rows=1, max_cols=1)
+
+    assert meta["format"] == "xls-biff8"
+    assert meta["truncated"] is True
+    assert "name" in text
+    assert "数值" not in text
+    assert "42.5" not in text
+
+
+def test_parse_docx_appends_marker_when_character_bound_is_exceeded(tmp_path) -> None:
+    target = tmp_path / "bounded.docx"
+    _make_docx(target)
+
+    text, _meta = parse_document(target, max_chars=3)
+
+    assert text.startswith("Hel")
+    assert text.endswith("\n…（已截断）")
+
+
 def test_parse_csv_and_json(tmp_path) -> None:
     csv_path = tmp_path / "data.csv"
     csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
