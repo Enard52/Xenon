@@ -245,6 +245,68 @@ def test_parse_unsupported_extension_raises(tmp_path) -> None:
         parse_document(target)
 
 
+# ── 边界测试：max_rows / max_cols / max_chars ────────────────
+def test_xlsx_max_rows_clamps_emitted_rows(tmp_path) -> None:
+    target = tmp_path / "book.xlsx"
+    _make_xlsx(target)
+
+    text, _meta = parse_document(target, max_rows=1)
+
+    assert "name" in text
+    assert "42" not in text
+
+
+def test_xlsx_max_cols_clamps_emitted_columns(tmp_path) -> None:
+    target = tmp_path / "book.xlsx"
+    _make_xlsx(target)
+
+    text, _meta = parse_document(target, max_cols=1)
+
+    assert "name" in text
+    assert "42" in text
+    assert "value" not in text
+
+
+def test_biff8_max_rows_clamps_and_flags_truncated(tmp_path) -> None:
+    target = tmp_path / "table.et"
+    _make_ole2_et(target)
+
+    text, meta = parse_document(target, max_rows=1)
+
+    assert "name" in text
+    assert "42.5" not in text
+    assert meta["truncated"] is True
+
+
+def test_biff8_max_cols_clamps_columns_without_row_truncation(tmp_path) -> None:
+    target = tmp_path / "table.et"
+    _make_ole2_et(target)
+
+    text, meta = parse_document(target, max_cols=1)
+
+    assert "name" in text
+    assert "42.5" in text
+    assert "数值" not in text
+    assert meta["truncated"] is False
+
+
+def test_max_chars_truncates_and_appends_marker(tmp_path) -> None:
+    # xlsx / biff8 走 text[:max_chars] + marker；docx 走 content[:max_chars] + marker。
+    cases = (
+        ("book.xlsx", _make_xlsx),
+        ("table.et", _make_ole2_et),
+        ("doc.docx", _make_docx),
+    )
+    for name, make in cases:
+        target = tmp_path / name
+        make(target)
+
+        text, _meta = parse_document(target, max_chars=3)
+
+        assert text.endswith("\n…（已截断）"), name
+        assert len(text) == 3 + len("\n…（已截断）"), name
+
+
 # ── 工具注册 / schema / 真实调用 ─────────────────────────────
 def test_read_document_is_registered_as_read_only() -> None:
     definition = BUILTIN_TOOL_REGISTRY.get("read_document")
