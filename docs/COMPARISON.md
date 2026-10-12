@@ -1,7 +1,9 @@
 # Xenon vs Aider / Claude Code / OpenCode / Crush
 
 > 这是一份**实事求是**的能力对位表。✅ = 有，⚠️ = 部分 / 有限，❌ = 没有，— = 不适用。
-> 评测时间 2026-07-08；后续版本可能变化。觉得有出入的，欢迎 issue。
+> 评测时间 2026-07-08；Xenon 侧能力已按 v0.9.2 现状更新（2026-10-12）。
+> 注意：闭源竞品（Claude Code / Crush）的内部实现不可观测，其 ❌ 应读作
+> 「在我们能核实的公开信息中未见」，而非断言没有。
 
 ---
 
@@ -46,7 +48,7 @@
 | OpenCode | 支持 MCP。 |
 | Crush | 支持 MCP（stdio/http/sse 三种类型）；不支持自动重启 MCP server。 |
 
-**Xenon 优势**：和 Crush 一样全传输类型支持，但加上 B11 修复的墙钟超时（v0.2.0 真实 commit `xxx` 修复），子进程挂死不会拖死整个 agent。
+**Xenon 优势**：和 Crush 一样全传输类型支持，但加上 B11 修复的墙钟超时（v0.2.0 `bf6e83a` 修复），子进程挂死不会拖死整个 agent。
 **Xenon 劣势**：和 Claude Code 相比，MCP server **不自动重启**——子进程挂掉需要 `/mcp add` 重新添加。这是已知后续项（不是技术不能，是优先级让位给 #19 等 v0.3.0 重写）。
 
 ### 2. 多模型路由
@@ -119,13 +121,13 @@
 | **Xenon** | `HollowDetector` 三类信号：①`len<5` 快速失败；②`tool>=5 && len<100` 不成比例；③15 个反模式正则 + 组合判定（命中正则 AND（长度不足 OR 结构差））。 |
 | 其它 4 项 | ❌。 |
 
-**Xenon 优势**：**全表独有**。这是 Xenon 的"软提示"机制——给 LLM 补救机会而非直接判失败，配合 `BudgetManager.on_hollow_answer()` 触发额外轮次。
+**Xenon 优势**：**全表独有**。空洞回答是 L1 结构层唯一阻断类校验（`turn/gate.py`）：命中后同回合反馈重试、同因熔断；语义类问题走 L2「待人工核验清单」不阻断。
 
 ### 8. 三阶段预算
 
 | 项目 | 能力 |
 | --- | --- |
-| **Xenon** | `BudgetManager` 三阶段软预算：EXPLORE（25%，鼓励探索）→ EXECUTE（50%）→ CONVERGE（25%，禁用 7 个纯探索型工具强制收束）；奖励机制（压缩 +N / 空洞 +N，`max_total_multiplier=2×` 封顶）。 |
+| **Xenon** | `BudgetManager` 三阶段软预算：EXPLORE（25%，鼓励探索）→ EXECUTE（50%）→ CONVERGE（25%，禁用纯探索型工具强制收束）；奖励仅保留压缩奖励（空洞奖励 API 已删除，空洞判定收敛到回合级 TurnGate）。 |
 | 其它 4 项 | ❌。 |
 
 **Xenon 优势**：**全表独有**。这是 Xenon 区别于"调 LLM API 的 CLI 工具"的核心——不只是问 LLM 答啥，而是**有节律地引导 LLM 走向最终答案**。

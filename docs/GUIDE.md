@@ -178,7 +178,7 @@ top-level architecture. The four pillars remain:
 1. **Cache-aware cost loop** — DeepSeek cache usage, request-family evidence,
    deterministic prompt-prefix compilation, and conservative peer-model cache
    affinity are observable and controllable without an extra model call.
-2. **8-engine auto-router** — From simple Q&A to plan-execute-reflect chains,
+2. **Multi-engine auto-router（6 engines + direct 对话分支）** — From simple Q&A to plan-execute-reflect chains,
    each engine is a standalone module with pluggable callbacks.
 3. **7-stage tool pipeline** — Parameter normalization, hallucination checks,
    permissions, circuit breaking, execution, and structured results.

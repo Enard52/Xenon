@@ -1,5 +1,10 @@
 # Xenon
 
+[![CI](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml/badge.svg)](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/xianyu-sheng/Xenon)](https://github.com/xianyu-sheng/Xenon/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+
 一个交互式 **AI 编码代理（Agent Harness）**：在终端里与多模型协作完成任务——读写代码、执行命令、验证结果，每一步都经过确定性校验与可审计的权限边界。
 
 > **定位：唯一一个把"机器验证到什么程度"透明说给用户听的 Agent Harness。**
@@ -48,8 +53,8 @@ pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.2/xenon
 ```
 
 ```bash
-# 克隆源码本地安装（editable，源码即运行版）
-git clone https://github.com/xianyu-sheng/Xenon.git
+# 克隆源码本地安装（editable，源码即运行版；浅克隆省流量）
+git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
 cd Xenon
 python -m venv .venv
 .venv/Scripts/python -m pip install -e .        # Windows

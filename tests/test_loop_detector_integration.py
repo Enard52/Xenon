@@ -152,3 +152,33 @@ class TestLoopDetectionInheritance:
         # 子引擎检测器仍然启用
         assert engine.planner._loop_detector.enabled
         assert engine.reactor._loop_detector.enabled
+
+
+class TestLoopDetectionActuallyFires:
+    """审计要求：集成测试不能只断言"初始化了"——必须验证真的熔断。
+
+    对每个引擎持有的检测器喂入重复轮次，断言 check() 真的返回 is_loop。
+    """
+
+    @staticmethod
+    def _assert_fires(engine):
+        detector = engine._loop_detector
+        for _ in range(3):
+            detector.add_turn("identical output")
+        result = detector.check()
+        assert result.is_loop is True
+        assert result.reason
+
+    def test_plan_execute_detector_fires(self):
+        self._assert_fires(PlanExecuteEngine(["mock"]))
+
+    def test_reflection_detector_fires(self):
+        self._assert_fires(ReflectionEngine(["mock"]))
+
+    def test_combined_engines_detectors_fire(self):
+        for engine in (
+            PlanReactEngine(["mock"]),
+            PlanReflectionEngine(["mock"]),
+            ReactReflectionEngine(["mock"]),
+        ):
+            self._assert_fires(engine)
