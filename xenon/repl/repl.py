@@ -189,10 +189,12 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
         # v0.6.0: 智能路由器 (Intelligent Router)
         from xenon.repl.intelligent_router import IntelligentRouter
 
+        _auto_route_cfg = get_config().auto_route
         self.intelligent_router = IntelligentRouter(
             enabled=False,  # 默认关闭，通过 CLI 参数或命令启用
-            confidence_threshold=0.6,
-            notify_user=True,
+            confidence_threshold=_auto_route_cfg.confidence_threshold,
+            notify_user=_auto_route_cfg.notify_user,
+            switch_only_on_improvement=_auto_route_cfg.switch_only_on_improvement,
         )
 
         # 会话状态，供命令处理器共享
@@ -2374,25 +2376,12 @@ def start_repl(
 
     # v0.6.0: 智能路由启用逻辑
     # 优先级: CLI 参数 > 环境变量 > 配置文件 > 默认关闭
-    import os
     should_enable_auto_route = auto_route  # CLI 参数优先
 
     if not should_enable_auto_route:
-        # 检查环境变量
-        env_auto_route = os.environ.get("XENON_AUTO_ROUTE", "").lower()
-        if env_auto_route in ("1", "true", "yes", "on"):
-            should_enable_auto_route = True
-        elif not env_auto_route:
-            # 检查配置文件
-            config_file = Path.home() / ".xenon" / "config.yaml"
-            if config_file.exists():
-                try:
-                    import yaml
-                    with open(config_file, "r", encoding="utf-8") as f:
-                        config = yaml.safe_load(f) or {}
-                    should_enable_auto_route = config.get("auto_route", {}).get("enabled", False)
-                except Exception:
-                    pass  # 配置文件读取失败，使用默认值
+        # 环境变量 XENON_AUTO_ROUTE 与 config.yaml 的 auto_route.enabled
+        # 已并入 get_config()（优先级: 环境变量 > 配置文件）
+        should_enable_auto_route = get_config().auto_route.enabled
 
     if should_enable_auto_route:
         repl.intelligent_router.enable()

@@ -10,6 +10,7 @@ from rich.console import Console
 from xenon.repl.command_groups.review import _cmd_review
 from xenon.repl.model_registry import ModelRegistry
 from xenon.repl.repl import REPL
+from xenon.repl.system_config import AutoRouteConfig
 
 
 def _make_repl(tmp_path, monkeypatch) -> REPL:
@@ -55,7 +56,14 @@ def test_approval_panel_includes_diff(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "xenon.repl.repl.get_config",
-        lambda: type("C", (), {"interaction": type("I", (), {"assume_yes": False})()})(),
+        lambda: type(
+            "C",
+            (),
+            {
+                "interaction": type("I", (), {"assume_yes": False})(),
+                "auto_route": AutoRouteConfig(),
+            },
+        )(),
     )
     monkeypatch.setattr(sys, "stdin", type("T", (), {"isatty": lambda self: True})())
     monkeypatch.setattr("xenon.repl.repl.Prompt.ask", lambda *a, **k: "n")
