@@ -15,6 +15,15 @@ pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon
 xenon   # first run walks you through setup (/setup: API key, model, engine)
 ```
 
+> **Windows troubleshooting — `'xenon' is not recognized`:**
+> - The entry script landed in a Scripts directory that is not on `PATH`. pip usually prints
+>   `WARNING: The script xenon.exe is installed in '...' which is not on PATH` — run that full
+>   path directly (`<dir>\Scripts\xenon.exe`) or add the directory to `PATH`.
+> - **PATH-independent entry point:** `python -m xenon` (v0.9.4+).
+> - Or use `uv tool install <same wheel URL>` / `pipx install <same wheel URL>` (they manage the entry point for you).
+> - Mixing conda with a standalone Python? Use a dedicated venv:
+>   `python -m venv .venv` then `.venv\Scripts\python -m pip install <wheel URL>`.
+
 > **Positioning: the only agent harness that tells you *how much was actually machine-verified* and how much is left for you to check.**
 > Claude Code / Codex say "we don't verify semantics — trust us." Xenon says
 > **"the machine manages the evidence; you judge the truth."** The machine is

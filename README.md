@@ -60,6 +60,15 @@ xenon   # 首次运行引导配置（/setup：Key、模型、范式）
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
 ```
 
+> **Windows 排障——提示 `'xenon' 不是内部或外部命令`：**
+> - 命令入口被装进了 Scripts 目录而该目录不在 PATH。pip 安装时通常会打印
+>   `WARNING: The script xenon.exe is installed in '...' which is not on PATH`——
+>   用该路径直接运行（`<该目录>\Scripts\xenon.exe`）或把它加入 PATH。
+> - **PATH 无关的启动方式**：`python -m xenon`（v0.9.4+）。
+> - 或改用 `uv tool install <同一 wheel URL>` / `pipx install <同一 wheel URL>`（自动管理入口）。
+> - conda 与独立 Python 混用时建议专用 venv：
+>   `python -m venv .venv` 然后 `.venv\Scripts\python -m pip install <wheel URL>`。
+
 ```bash
 # 克隆源码本地安装（editable，源码即运行版；浅克隆省流量）
 git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
