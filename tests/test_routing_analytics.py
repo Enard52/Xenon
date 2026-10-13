@@ -128,3 +128,28 @@ def test_logging_failure_does_not_break_routing():
     decision = _router(BrokenHistory()).route("continue", object(), "direct")
 
     assert decision is not None
+
+
+def test_decision_history_ring_is_bounded():
+    """The decision ring evicts the oldest records once maxsize is reached."""
+    history = DecisionHistory(maxsize=3)
+    for index in range(5):
+        history.record(
+            RoutingDecisionRecord(
+                timestamp=float(index),
+                user_input_preview=f"p{index}",
+                features={},
+                matched_rule="R7",
+                recommended_paradigm="react",
+                confidence=0.8,
+                current_paradigm="direct",
+                switched=False,
+            )
+        )
+
+    assert [record.user_input_preview for record in history.all()] == [
+        "p2",
+        "p3",
+        "p4",
+    ]
+    assert history.stats()["total_decisions"] == 3
