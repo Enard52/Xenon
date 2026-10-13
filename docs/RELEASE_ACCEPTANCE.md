@@ -9,7 +9,7 @@
 ```bash
 ruff check xenon tests
 python -m compileall -q xenon tests
-pytest tests xenon/tests -m "not live" -q --tb=short --no-header
+pytest tests -m "not live" -q --tb=short --no-header
 uv build
 ```
 

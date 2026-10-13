@@ -1,12 +1,10 @@
-"""仓库级 pytest 配置 — 对 ``tests/`` 和 ``xenon/tests/`` 两棵测试树同时生效。
+"""仓库级 pytest 配置 — 对仓库根目录的 ``tests/`` 测试套件生效。
 
-这些 autouse fixture 原先只放在 ``tests/conftest.py``，因此 ``xenon/tests/``
-下的用例一个都拿不到（pytest 的 conftest 按目录树生效）。其中
-``_isolate_chat_completion_mock`` 负责兜住 ``chat_completion`` 的 mock 泄漏，
-而 ``xenon/tests/`` 恰好放着直接打 LLM 客户端的 cache 相关用例，缺失该兜底
-会让泄漏在同进程内污染后续测试。
+这些 autouse fixture 集中在仓库根目录，确保所有测试共享一致的隔离与 mock
+恢复行为。``_isolate_chat_completion_mock`` 负责兜住 ``chat_completion``
+的 mock 泄漏，避免泄漏在同进程内污染后续测试。
 
-提到仓库根目录后，两棵树行为一致。
+将配置提到仓库根目录后，整个测试套件行为一致。
 """
 
 import pytest

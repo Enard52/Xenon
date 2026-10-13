@@ -120,7 +120,7 @@ Xenon 在 `ContextManager` 和各推理引擎中统一使用缓存层级：
 该结果验证的是“模型切走后保留自己的前缀，再次路由回来继续追加”，而不是把所有
 模型强行塞入同一条历史。测试使用厂商 usage 中的 hit/miss token 作为证据；首次
 进入每个模型仍是预期的冷启动。可通过 opt-in 测试
-`xenon/tests/test_cache_rails_live.py` 复验，实时结果会受厂商缓存状态影响。
+`tests/test_cache_rails_live.py` 复验，实时结果会受厂商缓存状态影响。
 
 ---
 

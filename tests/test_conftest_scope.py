@@ -1,12 +1,10 @@
-"""回归防护：仓库级 autouse fixture 必须对两棵测试树同时生效。
+"""回归防护：仓库级 autouse fixture 必须对测试套件生效。
 
-历史问题：4 个 autouse fixture 只放在 ``tests/conftest.py``，导致
-``xenon/tests/`` 下的 8 个文件一个都拿不到。其中
-``_isolate_chat_completion_mock`` 是 ``chat_completion`` mock 泄漏的唯一兜底，
-而 ``xenon/tests/`` 恰好放着直接打 LLM 客户端的 cache 用例。
+历史上，4 个 autouse fixture 只在局部 pytest 配置中声明，导致部分用例拿不到。
+其中 ``_isolate_chat_completion_mock`` 是 ``chat_completion`` mock 泄漏的唯一
+兜底，因此必须从仓库根目录统一加载。
 
-本文件断言 fixture 在 ``tests/`` 生效；``xenon/tests/`` 侧的同名断言见
-``xenon/tests/test_conftest_scope.py``。两者都过才说明提到根目录成功。
+本文件断言 fixture 在 ``tests/`` 下生效，确保根目录配置仍然覆盖测试套件。
 """
 
 REQUIRED_AUTOUSE_FIXTURES = {

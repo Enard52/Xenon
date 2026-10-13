@@ -218,7 +218,7 @@ Read the full breakdown in [ARCHITECTURE.md](ARCHITECTURE.md).
 git clone https://github.com/xianyu-sheng/Xenon.git
 cd Xenon
 pip install -e ".[dev]"
-pytest tests xenon/tests -m "not live and not e2e" -q
+pytest tests -m "not live and not e2e" -q
 ```
 
 PRs welcome! Please include tests for new features.

@@ -48,7 +48,7 @@ jobs:
 
       - name: Offline tests + coverage
         run: |
-          python -m pytest tests xenon/tests \
+          python -m pytest tests \
             -m "not live and not e2e" \
             -q --tb=short \
             --cov=xenon \

@@ -586,9 +586,8 @@ class TestSecurityBoundary:
     换成宽松版本，方便绝大多数用例使用临时目录。但本类断言的正是路径校验
     本身，因此需要显式恢复真实实现，否则断言会失去意义。
 
-    历史背景：这些用例过去位于 ``tests/conftest.py`` 的作用域之外（在
-    ``xenon/tests/`` 下），因而"恰好"拿到了真实校验。把 fixture 提到仓库根
-    目录后，必须显式声明这一依赖。
+    历史背景：这些用例过去位于局部 pytest 配置的作用域之外，因而"恰好"
+    拿到了真实校验。把 fixture 提到仓库根目录后，必须显式声明这一依赖。
     """
 
     def test_path_traversal_blocked(self, real_path_validation):
