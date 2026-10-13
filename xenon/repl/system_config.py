@@ -151,6 +151,8 @@ class AutoRouteConfig:
     notify_user: bool = True
     # XENON_AUTO_ROUTE_SWITCH_ONLY_ON_IMPROVEMENT: 只在新范式更好时切换（防降级）
     switch_only_on_improvement: bool = True
+    # XENON_AUTO_ROUTE_LOG_DECISIONS: 是否持久化决策日志（JSONL）
+    log_decisions: bool = False
 
 
 @dataclass
@@ -569,6 +571,14 @@ def _merge_config(file_data: dict[str, Any]) -> SystemConfig:
                 "auto_route.switch_only_on_improvement",
             ),
         ),
+        log_decisions=_get_bool_env(
+            "XENON_AUTO_ROUTE_LOG_DECISIONS",
+            _coerce_bool(
+                auto_route_data.get("log_decisions"),
+                False,
+                "auto_route.log_decisions",
+            ),
+        ),
     )
 
     return SystemConfig(
@@ -745,6 +755,10 @@ auto_route:
   # 只在新范式更好时切换（避免降级）
   # 环境变量: XENON_AUTO_ROUTE_SWITCH_ONLY_ON_IMPROVEMENT
   switch_only_on_improvement: true
+
+  # 是否将最近的决策持久化到 ~/.xenon/auto_route_decisions.jsonl
+  # 环境变量: XENON_AUTO_ROUTE_LOG_DECISIONS
+  log_decisions: false
 """
 
     with path.open("w", encoding="utf-8") as f:

@@ -20,6 +20,7 @@ _ENV_KEYS = (
     "XENON_AUTO_ROUTE_CONFIDENCE",
     "XENON_AUTO_ROUTE_NOTIFY_USER",
     "XENON_AUTO_ROUTE_SWITCH_ONLY_ON_IMPROVEMENT",
+    "XENON_AUTO_ROUTE_LOG_DECISIONS",
 )
 
 
@@ -45,6 +46,7 @@ def test_auto_route_defaults_when_section_missing(monkeypatch, tmp_path):
     assert cfg.confidence_threshold == 0.6
     assert cfg.notify_user is True
     assert cfg.switch_only_on_improvement is True
+    assert cfg.log_decisions is False
 
 
 def test_auto_route_keys_read_from_config_file(monkeypatch, tmp_path):
@@ -57,6 +59,7 @@ auto_route:
   confidence_threshold: 0.9
   notify_user: false
   switch_only_on_improvement: false
+  log_decisions: true
 """,
     )
 
@@ -66,6 +69,7 @@ auto_route:
     assert cfg.confidence_threshold == 0.9
     assert cfg.notify_user is False
     assert cfg.switch_only_on_improvement is False
+    assert cfg.log_decisions is True
 
 
 def test_confidence_env_overrides_config_file(monkeypatch, tmp_path):

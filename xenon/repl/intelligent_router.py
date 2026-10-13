@@ -7,10 +7,13 @@
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from xenon.repl.feature_extractor import FeatureExtractor
 from xenon.repl.paradigm_selector import ParadigmSelector, RoutingDecision
+from xenon.repl.routing_history import DecisionHistory, RoutingDecisionRecord
 
 if TYPE_CHECKING:
     from xenon.repl.context_manager import ContextManager
@@ -32,6 +35,7 @@ class IntelligentRouter:
         confidence_threshold: float = 0.6,
         notify_user: bool = True,
         switch_only_on_improvement: bool = True,
+        decision_history: DecisionHistory | None = None,
     ):
         """
         初始化智能路由器
@@ -46,6 +50,7 @@ class IntelligentRouter:
         self.confidence_threshold = confidence_threshold
         self.notify_user = notify_user
         self.switch_only_on_improvement = switch_only_on_improvement
+        self.decision_history = decision_history or DecisionHistory()
 
         self.extractor = FeatureExtractor()
         self.selector = ParadigmSelector()
@@ -94,6 +99,9 @@ class IntelligentRouter:
             if decision.paradigm == current_mode:
                 # 与当前模式一致，无需切换
                 logger.debug(f"推荐范式与当前一致: {current_mode}")
+                self._record_decision(
+                    user_input, features, decision, current_mode, switched=False
+                )
                 return None
 
             # Step 4: 置信度检查
@@ -101,6 +109,9 @@ class IntelligentRouter:
                 logger.info(
                     f"置信度 {decision.confidence:.2f} 低于阈值 "
                     f"{self.confidence_threshold}，不切换"
+                )
+                self._record_decision(
+                    user_input, features, decision, current_mode, switched=False
                 )
                 return None
 
@@ -111,16 +122,48 @@ class IntelligentRouter:
                         f"不建议从 {current_mode} 切换到 {decision.paradigm}，"
                         f"保持当前范式"
                     )
+                    self._record_decision(
+                        user_input, features, decision, current_mode, switched=False
+                    )
                     return None
 
             # 通过所有检查，建议切换
             self._successful_routes += 1
             self._switches += 1
+            self._record_decision(
+                user_input, features, decision, current_mode, switched=True
+            )
             return decision
 
         except Exception as e:
             logger.error(f"路由决策失败: {e}", exc_info=True)
             return None
+
+    def _record_decision(
+        self,
+        user_input: str,
+        features: object,
+        decision: RoutingDecision,
+        current_mode: str,
+        *,
+        switched: bool,
+    ) -> None:
+        """Persist one bounded, privacy-safe decision record."""
+        try:
+            self.decision_history.record(
+                RoutingDecisionRecord(
+                    timestamp=time.time(),
+                    user_input_preview=user_input[:120],
+                    features=asdict(features),
+                    matched_rule=decision.matched_rule,
+                    recommended_paradigm=decision.paradigm,
+                    confidence=decision.confidence,
+                    current_paradigm=current_mode,
+                    switched=switched,
+                )
+            )
+        except Exception:
+            logger.debug("记录智能路由决策失败（已忽略）", exc_info=True)
 
     def _is_improvement(self, current: str, proposed: str) -> bool:
         """
@@ -181,4 +224,5 @@ class IntelligentRouter:
                 self._successful_routes / self._total_routes
                 if self._total_routes > 0 else 0
             ),
+            "decision_log": self.decision_history.stats(),
         }

@@ -161,8 +161,16 @@ def cmd_auto_route(*, args: str, session_state: dict, **kwargs) -> str | None:
     用法:
         /auto-route on    - 启用智能路由
         /auto-route off   - 禁用智能路由
+        /auto-route stats - 查看决策统计
+        /auto-route export --format json|csv --output FILE
         /auto-route       - 查看当前状态
     """
+    import csv
+    import json
+    import shlex
+    from dataclasses import asdict
+    from pathlib import Path
+
     from rich.console import Console
     from rich.table import Table
 
@@ -182,6 +190,107 @@ def cmd_auto_route(*, args: str, session_state: dict, **kwargs) -> str | None:
         repl.intelligent_router.disable()
         console.print("\n[yellow]智能路由已禁用[/yellow]")
         console.print("[dim]范式切换恢复为完全手动控制。[/dim]")
+        return None
+    elif arg == "stats":
+        log_stats = repl.intelligent_router.get_stats()["decision_log"]
+        table = Table(title="智能路由决策统计", border_style="dim")
+        table.add_column("指标", style="cyan")
+        table.add_column("值", style="white")
+        total = log_stats["total_decisions"]
+        switches = log_stats["switches"]
+        rate = switches / total if total else 0
+        table.add_row("决策总数", str(total))
+        table.add_row("范式切换", str(switches))
+        table.add_row("切换率", f"{rate:.0%}")
+        table.add_row(
+            "规则命中",
+            ", ".join(
+                f"{key}: {value}"
+                for key, value in sorted(log_stats["rule_hits"].items())
+            ) or "—",
+        )
+        table.add_row(
+            "推荐范式",
+            ", ".join(
+                f"{key}: {value}"
+                for key, value in sorted(log_stats["paradigms"].items())
+            ) or "—",
+        )
+        console.print()
+        console.print(table)
+        recent = log_stats["recent"]
+        if recent:
+            console.print("\n[dim]最近决策[/dim]")
+            for record in recent:
+                switched = "切换" if record.switched else "保持"
+                console.print(
+                    f"[dim]· {record.current_paradigm} → "
+                    f"{record.recommended_paradigm} ({record.confidence:.0%}, "
+                    f"{switched}) {record.user_input_preview!r}[/dim]"
+                )
+        return None
+    elif arg.startswith("export"):
+        try:
+            # Keep Windows drive paths and backslashes intact; users may still
+            # quote paths containing spaces.
+            tokens = [
+                token.strip('"') for token in shlex.split(arg, posix=False)
+            ]
+            output = None
+            export_format = None
+            index = 1
+            while index < len(tokens):
+                token = tokens[index]
+                if token == "--format" and index + 1 < len(tokens):
+                    export_format = tokens[index + 1].lower()
+                    index += 2
+                    continue
+                if token == "--output" and index + 1 < len(tokens):
+                    output = tokens[index + 1]
+                    index += 2
+                    continue
+                raise ValueError(f"未知参数: {token}")
+            if export_format not in {"json", "csv"} or not output:
+                raise ValueError(
+                    "用法: /auto-route export --format json|csv --output FILE"
+                )
+
+            records = repl.intelligent_router.decision_history.all()
+            target = Path(output)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if export_format == "json":
+                target.write_text(
+                    json.dumps(
+                        [asdict(record) for record in records],
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            else:
+                fields = [
+                    "timestamp",
+                    "user_input_preview",
+                    "matched_rule",
+                    "recommended_paradigm",
+                    "confidence",
+                    "current_paradigm",
+                    "switched",
+                    "features",
+                ]
+                with target.open("w", newline="", encoding="utf-8") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=fields)
+                    writer.writeheader()
+                    for record in records:
+                        row = asdict(record)
+                        row["features"] = json.dumps(
+                            row["features"], ensure_ascii=False, sort_keys=True
+                        )
+                        writer.writerow(row)
+            console.print(f"[green]✓ {len(records)} 条决策已导出到 {target}[/green]")
+        except (OSError, ValueError) as exc:
+            console.print(f"[red]导出失败: {exc}[/red]")
         return None
     else:
         # 显示当前状态和统计
