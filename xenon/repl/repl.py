@@ -102,6 +102,30 @@ import xenon.repl.approval_ux as _approval_ux  # noqa: E402
 
 _approval_ux.logger = logger
 
+_PROMPT_STYLE = {
+    # 输入区借鉴 Claude Code / pi 的轻量层次：线条定界，避免整块底色。
+    "prompt": "bold #67e8f9",
+    "input.rule": "#334155",
+    "bottom-toolbar": "noreverse",
+    "bottom-toolbar.text": "#94a3b8",
+    "toolbar.separator": "#475569",
+    "toolbar.model": "#cbd5e1",
+    "toolbar.mode": "#c4b5fd",
+    "toolbar.good": "bold #86efac",
+    "toolbar.warning": "bold #fcd34d",
+    "toolbar.danger": "bold #fda4af",
+    "toolbar.notice": "bold #fde68a",
+    "toolbar.muted": "#94a3b8",
+    "toolbar.hint": "#64748b italic",
+}
+
+
+def _build_pt_style() -> dict[str, str]:
+    """Return the prompt_toolkit style, honoring the standard NO_COLOR flag."""
+    if "NO_COLOR" in os.environ:
+        return {}
+    return _PROMPT_STYLE.copy()
+
 
 class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, SessionOpsMixin):
     """
@@ -406,24 +430,7 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
             else:  # defensive fallback for unusual prompt_toolkit versions
                 self._toggle_thinking_details()
 
-        style = Style.from_dict(
-            {
-                # 输入区借鉴 Claude Code / pi 的轻量层次：线条定界，避免整块底色。
-                "prompt": "bold #67e8f9",
-                "input.rule": "#334155",
-                "bottom-toolbar": "noreverse",
-                "bottom-toolbar.text": "#94a3b8",
-                "toolbar.separator": "#475569",
-                "toolbar.model": "#cbd5e1",
-                "toolbar.mode": "#c4b5fd",
-                "toolbar.good": "bold #86efac",
-                "toolbar.warning": "bold #fcd34d",
-                "toolbar.danger": "bold #fda4af",
-                "toolbar.notice": "bold #fde68a",
-                "toolbar.muted": "#94a3b8",
-                "toolbar.hint": "#64748b italic",
-            }
-        )
+        style = Style.from_dict(_build_pt_style())
 
         history_path = _HISTORY_DIR / "input_history.txt"
 
