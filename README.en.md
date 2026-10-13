@@ -140,6 +140,12 @@ xenon/
 - `/review`'s revert only covers edits that have `.bak` backups; git remains irreplaceable.
 - The intent classifier uses the fastest available model with ~1s latency; if unavailable it falls back to conservative regexes.
 
+## Featured in
+
+<!-- Ordered by list prominence; insert new entries in place once merged. -->
+
+- [awesome-mcp-lists](https://github.com/collabnix/awesome-mcp-lists) — Collabnix community list of MCP servers, clients and toolkits (MCP Clients → Command Line Tools)
+
 ## License
 
 MIT

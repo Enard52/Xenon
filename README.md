@@ -142,6 +142,12 @@ xenon/
 - `/review` 的 revert 只覆盖有 `.bak` 备份的编辑；用 git 管理不可替代。
 - 意图分类器默认走最快可用模型，有 ~1s 延迟；不可用自动降级正则（保守）。
 
+## 收录 / Featured in
+
+<!-- 按榜单影响力排序；新收录在合并后插入到对应位置 -->
+
+- [awesome-mcp-lists](https://github.com/collabnix/awesome-mcp-lists) — Collabnix 社区的 MCP 客户端 / 工具清单（MCP Clients → Command Line Tools）
+
 ## License
 
 MIT
