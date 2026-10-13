@@ -86,3 +86,18 @@ def test_default_rich_theme_builds() -> None:
     assert isinstance(theme, Theme)
     for token in TOKENS:
         assert token in theme.styles
+
+
+def test_default_palette_matches_live_repl(monkeypatch) -> None:
+    """Drift guard: until the #112 migration lands, repl.py and theme.py agree.
+
+    ``repl.py`` still carries its own copy of the prompt palette and the five
+    original Rich theme entries. If either copy changes without the other, the
+    future color migration would silently re-theme the default look.
+    """
+    from xenon.repl.repl import _build_pt_style, _theme
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    assert _build_pt_style() == DEFAULT_PT_STYLE
+    for token in ("user", "assistant", "system", "error", "command"):
+        assert str(_theme.styles[token]) == DEFAULT_TOKEN_STYLES[token]
