@@ -1,7 +1,8 @@
 # Xenon 外部集成 CLI
 
 Xenon 为 Ark CLI、安装脚本和其他 Agent 管理器提供独立于交互式 REPL 的稳定命令。
-这些命令不启动模型、不探测网络；传入 `--json` 后，stdout 只输出一个 JSON 对象，
+这些命令不启动模型，默认不探测网络（`verify --connect-mcp` 除外）；
+传入 `--json` 后，stdout 只输出一个 JSON 对象，
 错误说明和普通日志不会混入结构化结果。
 
 ## 能力发现
@@ -92,7 +93,7 @@ stdio 配置形态：
 }
 ```
 
-HTTP 配置形态：
+HTTP 配置形态（仅适用于下述 POST JSON-RPC 原型）：
 
 ```json
 {
@@ -115,12 +116,36 @@ xenon mcp remove dataPro-search --json
 `list` 和写入回执只显示 env/header 的键名、参数数量与脱敏 URL；不会回显值或 URL
 query。`doctor` 只做本地格式、命令可用性与文件权限检查，不会连接远端服务器。
 
+### MCP 传输边界
+
+`integrations describe` 中的 `stdio`、`http`、`sse` 是可接受的配置名称，
+不代表三种完整实现的传输协议。`sse` 配置会归一化为 `http`，两者均使用
+当前的 `SSETransport` 原型：
+
+- `request()` 向配置的 URL 直接 POST JSON-RPC，并读取该 HTTP 响应的 JSON。
+- `send()` 向同一 URL POST 通知，检查 HTTP 状态，但丢弃响应正文。
+- `receive()` 单独打开 GET 流，只读取首个非空 `data:` 行；它不会发现
+  `endpoint` 事件中的 POST 地址，也不会按请求 ID 关联流上的响应。
+
+因此，要求先建立 SSE 连接、从 `endpoint` 事件发现消息地址、再从流上接收
+响应的服务器目前不受支持；这也不是完整的 Streamable HTTP 实现。示例中的
+`/mcp` 只是占位路径，不会自动把普通 SSE 服务器转换为可用的 POST 端点。
+
+配置保存成功或 `xenon mcp doctor --json` 通过，都不证明握手成功。对已配置的
+服务器，使用 `xenon integrations verify --connect-mcp --server <name> --json`
+实际执行初始化和工具发现；通过表示当前客户端完成了上述请求流程，不等于
+严格的协议符合性验证，也不证明所有 MCP HTTP/SSE 服务器兼容或验证工具调用。
+完整传输实现、失败提示及回归测试
+仍由 [#103](https://github.com/xianyu-sheng/Xenon/issues/103) 跟踪。
+
 ## ArkCLI 与 VeADK 边界
 
 - ArkCLI 的 `+connect --path ~/.agents/skills` 产物是标准 Agent Skills，Xenon 会从
   共享用户层直接发现；ArkCLI 是否自动识别 Xenon，仍取决于 ArkCLI 上游的 agent
   注册表。
-- VeADK 使用的本地 `SKILL.md` 与 MCP stdio/HTTP 协议可以复用同一条 Xenon 加载
-  链路。`integrations verify --connect-mcp` 可作为可复现的协议兼容证据。
+- VeADK 使用的本地 `SKILL.md` 与 MCP stdio 配置可以复用 Xenon 加载链路；
+  HTTP 服务器须满足上述 POST JSON-RPC 原型的限制。
+  `integrations verify --connect-mcp` 可记录当前客户端对所选服务器执行初始化和
+  工具发现的结果，不代表严格的协议符合性验证。
 - “协议兼容”不等于 VeADK 已支持 `runtime="xenon"`。后者需要 VeADK 上游新增运行时
   适配和事件翻译；在其正式合并前，Xenon 不会把自己标记为官方 VeADK runtime。

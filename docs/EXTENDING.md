@@ -9,12 +9,21 @@ Xenon 提供五条注册式扩展路径，无需修改核心代码。
 xenon> /mcp add fs npx -y @modelcontextprotocol/server-filesystem .
 ✅ MCP 服务器 'fs' 已连接  发现 10 个工具
 
-# HTTP（SSE）传输
-xenon> /mcp add web http://localhost:3000/sse
+# HTTP POST JSON-RPC 原型（端点须直接返回 JSON 响应）
+xenon> /mcp add web http://localhost:3000/mcp
 
 # 查看已连接的服务器
 xenon> /mcp list
 ```
+
+上面的 HTTP URL 仅为占位示例，须替换为服务器实际提供的 POST JSON-RPC
+端点。当前 `SSETransport` 尚未实现 MCP SSE 的 `endpoint` 发现和流上响应
+ID 关联，也不代表完整支持 Streamable HTTP；不要直接填入仅提供 SSE 握手的
+`/sse` 地址。配置与连接验证的区别见 [MCP 传输边界](INTEGRATIONS.md#mcp-传输边界)。
+
+注意：当前 REPL 的 `/mcp add` 在初始化或工具发现失败时，仍可能显示
+“已连接，发现 0 个工具”；这条显示也不能作为握手成功的证明，见
+[#103](https://github.com/xianyu-sheng/Xenon/issues/103)。
 
 出处：`xenon/repl/command_groups/resources.py`、`xenon/mcp/registry.py`
 
