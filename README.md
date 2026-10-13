@@ -9,6 +9,8 @@
 
 [English](README.en.md) | 简体中文
 
+贡献指南见 [CONTRIBUTING.md](CONTRIBUTING.md)（含英文摘要），行为准则见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
 ```bash
 # 30 秒安装（无需 PyPI）
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl

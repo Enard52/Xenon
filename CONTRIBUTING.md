@@ -41,3 +41,54 @@
    - 只写「本地跑过没问题」而不附命令与输出的 PR，评审会要求补齐证据后再审。
 
 5. 不要提交凭证、个人配置、构建产物或供应商真实响应。
+
+---
+
+# Contributing (English)
+
+Thank you for your interest in Xenon, an open-source AI agent workspace for
+terminal and programming tasks. Issues, documentation improvements and code
+contributions are all welcome. The section above is the authoritative (Chinese)
+version; this is a concise English mirror of the essentials.
+
+## Feedback channels
+
+- **GitHub Issues** — bugs, feature design, cross-platform discussion (Chinese
+  or English).
+- **GitHub Pull Requests** — the merge path for code.
+- Security issues must **not** be filed publicly; follow the private reporting
+  process in [SECURITY.md](SECURITY.md).
+
+## Filing issues
+
+Please include: the Xenon version (`xenon --version`), Python version and OS,
+the model/provider in use (never paste API keys), minimal reproduction steps,
+expected vs. actual results, and sanitized logs or error messages.
+
+## Submitting a pull request
+
+1. Branch from `main` and **check the issue is not already assigned** — do not
+   start work on a claimed task.
+2. Keep the change focused; add tests or docs for behavior changes.
+3. Verify locally (same scope as CI, see `.github/workflows/ci.yml`):
+
+   ```bash
+   ruff check xenon tests evals
+   pytest -q -m "not live"
+   ```
+
+4. **The PR description must include a "CI evidence" section** (required for
+   review; template in `.github/PULL_REQUEST_TEMPLATE.md`):
+   - The exact commands you ran and their full result lines (targeted tests,
+     the offline suite, and ruff).
+   - New or modified tests **must fail without your change** — state how you
+     verified that.
+   - A comparison against `main` with the same commands: **no new failures**.
+     Known baseline failures on your platform (e.g. symlink/PTY tests on
+     Windows) may be excluded if noted in the PR.
+   - A link to the CI run. First-time fork contributors need a maintainer to
+     approve the workflow run once — make sure it is green afterwards.
+   - PRs that only say "works locally" without commands and output will be
+     asked for evidence before review.
+5. Never commit credentials, personal configuration, build artifacts, or real
+  vendor responses.

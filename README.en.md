@@ -9,6 +9,8 @@ An interactive **AI coding agent (agent harness)** for the terminal: work with m
 
 [English](README.en.md) | [简体中文](README.md)
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) (with an English summary) to contribute, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for our code of conduct.
+
 ```bash
 # 30-second install (no PyPI required)
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
