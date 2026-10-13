@@ -5,155 +5,129 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
-一个交互式 **AI 编码代理（Agent Harness）**：在终端里与多模型协作完成任务——读写代码、执行命令、验证结果，每一步都经过确定性校验与可审计的权限边界。
-
 [English](README.en.md) | 简体中文
 
-贡献指南见 [CONTRIBUTING.md](CONTRIBUTING.md)（含英文摘要），行为准则见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+**一个把"机器到底验证了什么"摊开给你看的终端 AI 编码代理。**
+
+别的 agent 说"完成了"，你只能选择相信它。Xenon 会把结果拆成两半说清楚：哪些是机器确认过的，哪些需要你自己看一眼。
+
+```text
+❯ 修复 config.py 里的超时默认值
+
+  🔧 edit_file  config.py                     ✓
+  🔧 run        pytest                        ✗ 2 failed
+  🏁 交付（降级）— 以下 2 项机器无法核实，请人工确认：
+     · "已覆盖所有调用点"（实际只确认 1/3 处引用）
+     · 未运行集成测试
+  🧾 证据链：41 条事件，完整连续 · /evidence 可随时复核
+```
+
+<sub>简化示意；真实界面会展示每次工具调用的完整记录。</sub>
 
 ```bash
 # 30 秒安装（无需 PyPI）
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
-xenon   # 首次运行引导配置（/setup：Key、模型、范式）
+xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 ```
 
-> **定位：唯一一个把"机器验证到什么程度"透明说给用户听的 Agent Harness。**
-> Claude Code / Codex 的哲学是"我不验证语义，你信我"；Xenon 的哲学是
-> **证据我管、真伪你核**——机器只对「过程真实性」负责，对「内容正确性」
-> 做分级透明披露。核心不是"又一个 LLM 客户端"，而是围绕
-> **证据哈希链、单一语义通道、可回溯会话树** 构建的代理骨架。
+> **Windows 提示：** 如果提示 `'xenon' 不是内部或外部命令`，说明 Scripts 目录不在 PATH——pip 安装时通常会打印 `WARNING: The script xenon.exe is installed in '...' which is not on PATH`，按那个路径运行，或把它加进 PATH；也可以直接用 `python -m xenon`（v0.9.4+）。混用 conda 和独立 Python 时，建议用专用 venv：`python -m venv .venv`。
 
-`/evidence` 实际输出（结构化回合摘要 + 一行链自证）：
+## 它具体做什么
+
+- **每一次工具调用都进证据链。** 会话事件写入 append-only 哈希链，每条带内容哈希与前驱哈希；`/evidence` 随时重算自证，能发现损坏、单点篡改和重排。
+- **只有一个阻断类校验。** "空洞回答"（没干活、答非所问）是确定性的，命中就同回合反馈重试、同因熔断；语义类问题不阻断交付，而是整理成随答案输出的「待人工核验清单」。
+- **每个回合是一棵树上的节点。** `/rewind` 回退、`/fork` 分叉；中断或熔断后，裸敲"继续"会自动从那个节点接上，不用重述上下文。
+- **越权操作要走审批。** 工作区内写文件不打扰你；越界写和命令会弹统一面板（带 diff 预览），授权可以按目标和时长限定，子代理默认只读。
+- **大文件截断、上下文超限都如实标注，** 不伪装完整。
+
+## 一个回合怎么走
+
+```text
+你的输入
+  → 意图判定（LLM 分类为主，失败自动降级正则）
+  → 引擎执行（预算检查点 / 循环检测 / 断路器）
+  → 回合校验（唯一判定点）
+      pass    → 正常交付
+      remind  → 交付 + 待人工核验清单（不阻断）
+      fail    → 同回合重试，预算用尽则降级交付
+      fuse    → 同因结构失败熔断，按未完成交付
+  → 会话树落盘 + 哈希链追加 + 回合归档
+```
+
+## 机器验证了什么，没验证什么
+
+| 层 | 测的是什么 | 结果怎么呈现 |
+|---|---|---|
+| **L0 证据层** | 过程是否真实、可复核 | 哈希链事件日志；`/evidence` 随时重算 |
+| **L1 结构层** | 回答是不是"没干活" | 唯一的阻断类校验：反馈重试 / 同因熔断 |
+| **L2 语义层** | 宣称、准则、文件声称是否站得住 | 不阻断；命中即附「待人工核验清单」，重试耗尽则降级交付 |
+
+语义判断全仓只有一处（`xenon/turn/gate.py`），引擎内部不做语义判定；工具成败只由工具回执决定，不靠关键词猜。
+
+`/evidence` 的输出（结构化回合摘要 + 一行链自证）：
 
 <img src="docs/evidence-chain.png" alt="/evidence 输出示例" width="720">
 
-## 三层可信度模型（核心差异）
-
-| 层 | 机制 | 机器职责 |
-|---|---|---|
-| **L0 证据层** | 会话事件日志是 append-only 哈希链：每条事件带内容哈希 + 前驱哈希，`/evidence` 命令随时重算自证（当前会话 / 全局 / 指定会话） | 证明**过程真实**（做了什么、成败几何、链是否完整连续） |
-| **L1 结构层** | 空洞回答（确定性、无语义盲点）是唯一阻断类校验：命中才反馈重试（半预算），同因熔断 | 拦截**没干活**的回答 |
-| **L2 语义层** | 宣称审计 / 完成准则 / 文件声称 / 写入后验证：**不阻断发布**，命中时附黄色「待人工核验清单」面板随答案输出；重试耗尽 → 降级发布 | 把**核不到的**醒目列给用户自核 |
-
-语义判定（宣称审计 / 完成准则 / 文件声称 / 写入后验证）只有一处
-（`xenon/turn/gate.py`）；引擎内仅有确定性结构纠偏（不完整回答重写、
-无工具完成声明重试），不做 LLM 语义判定；
-工具成败只由工具回执的 `success` 字段决定（单一语义通道），不用关键词猜。
-
-## 其他核心能力
-
-| 能力 | 说明 |
-|---|---|
-| **会话树（TurnTree）** | 每个用户回合是一个节点（状态/产物/判定/事件指针）。`/rewind` 回退、`/fork` 分叉、裸"继续"自动从**中断/熔断节点**续接 |
-| **预算检查点（非固定步数）** | 窗口耗尽时有进展 → 挂起审批"是否继续"；原地打转 → LoopDetector 熔断；同因基础设施错误连续两轮 → 快速熔断并给出指引 |
-| **结构化回合归档** | 长对话自动压缩：旧回合确定性折叠为意图/工具成败/失败日志/决策/产物归档块，零 LLM 开销；同时是检索摘要源 |
-| **边界审批** | 工作区内写免问；越界写与命令询问（统一面板 + diff 预览 + `a` 登记带 TTL 的会话规则）。审批是封闭词表、fail-closed，授权不随检索/恢复复活 |
-| **子代理默认只读** | `spawn_agent` 委派的子代理执行级别封顶 READ_ONLY，`read_only=false` 显式放行 |
-| **沙箱 seam** | 只读模式 + 命令白名单 + WSL/Docker 检测（诚实声明：软件边界，非真隔离） |
-| **诚实截断标注** | 输出因长度限制被截断时，回复尾部可见标记，不伪装完整 |
-| **hooks** | 用户/项目 `.xenon/hooks.yaml`：PreToolUse / PostToolUse / Stop / SubagentStop（exit 2 阻断，JSON stdin） |
-
-## 快速开始
-
-当前版本：**v0.9.3**（版本单一来源 `xenon.__version__`，历史见 [CHANGELOG](CHANGELOG.md)）。
+## 安装
 
 ```bash
-# 从 GitHub Releases 直接安装（无需 PyPI 账号；uv 用户：uv tool install <同一 URL>）
+# 方式一：从 GitHub Releases 安装 wheel（推荐）
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
-```
 
-> **Windows 排障——提示 `'xenon' 不是内部或外部命令`：**
-> - 命令入口被装进了 Scripts 目录而该目录不在 PATH。pip 安装时通常会打印
->   `WARNING: The script xenon.exe is installed in '...' which is not on PATH`——
->   用该路径直接运行（`<该目录>\Scripts\xenon.exe`）或把它加入 PATH。
-> - **PATH 无关的启动方式**：`python -m xenon`（v0.9.4+）。
-> - 或改用 `uv tool install <同一 wheel URL>` / `pipx install <同一 wheel URL>`（自动管理入口）。
-> - conda 与独立 Python 混用时建议专用 venv：
->   `python -m venv .venv` 然后 `.venv\Scripts\python -m pip install <wheel URL>`。
-
-```bash
-# 克隆源码本地安装（editable，源码即运行版；浅克隆省流量）
+# 方式二：源码安装（editable，浅克隆省流量）
 git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
-cd Xenon
-python -m venv .venv
+cd Xenon && python -m venv .venv
 .venv/Scripts/python -m pip install -e .        # Windows
-source .venv/bin/activate && pip install -e .   # Linux/macOS
-
-# 启动
-xenon
-# 首次运行会引导配置（/setup：Key、模型、范式）
+source .venv/bin/activate && pip install -e .   # Linux / macOS
 ```
 
-常用命令：`/evidence`（L0 证据账本自证）`/plan` `/goal` `/review` `/rewind <n>` `/fork [n]` `/compact` `/sessions` `/permissions` `/tools` `/help`
+也可以用 `uv tool install <wheel URL>` 或 `pipx install <wheel URL>`，入口会自动处理。
 
-启动即恢复：直接敲 `xenon` 会先弹**会话选择器**（数字选历史会话或新对话）；也可以 `xenon resume`（恢复最近）`xenon resume <序号>` `xenon --resume`（列表）。非交互终端自动跳过选择器。
-
-## 会话状态机（每回合）
+## 常用命令
 
 ```
-用户输入 → 单一语义通道（TurnContract，LLM 意图分类器 + 正则护栏）
-  → 引擎执行（纯执行器：预算检查点护栏 + 中断 + 循环检测）
-  → TurnGate 回合校验（唯一判定点）
-      pass   → 发布
-      remind → 发布 + 待人工核验清单（L2 语义层，不阻断）
-      fail   → 同回合反馈重试（预算=首轮实际步数/2，clamp[10,40]）；
-               耗尽 → 降级发布（degraded + 核验清单）
-      fuse   → 同因结构失败熔断，按未完成交付
-  → 树节点状态落盘 + 哈希链事件追加 + 回合归档
+/evidence   查看证据链（当前 / 全局 / 指定会话）      /plan   计划模式
+/goal       设定本轮目标                             /review 审阅改动（含 .bak 回退）
+/rewind     回退到某个回合                           /fork   从某个回合分叉
+/sessions   会话列表                                 /compact 压缩长对话
+/permissions 查看当前授权                           /tools  工具清单
 ```
+
+启动时先选会话：直接敲 `xenon` 会弹会话选择器（数字选历史会话或新对话），`xenon resume` 恢复最近一次。恢复后会回放对话历史。
 
 ## 环境变量
 
 | 变量 | 作用 | 默认 |
 |---|---|---|
-| `XENON_APPROVAL_TTL` | 会话级 `a` 授权规则 TTL（秒） | 1800 |
-| `XENON_VERIFY_RETRIES` | 结构层失败后同回合重试次数 | 2 |
-| `XENON_RETRY_BUDGET_MIN/MAX` | 重试轮预算 clamp | 10 / 40 |
-| `XENON_GATE_FUSE_THRESHOLD` | 同因结构失败熔断阈值 | 2 |
-| `XENON_MAX_ITERATIONS` | 单次运行步数（检查点窗口基准） | 40 |
-| `XENON_CHECKPOINT_STEPS` | 检查点窗口大小 | = 步数上限 |
-| `XENON_MAX_TOKENS` | 单次 LLM 调用输出上限 | 8192 |
-| `XENON_MAX_CONTINUATIONS` | 截断自动续写次数 | 3 |
-| `XENON_READ_ONLY` | 只读模式（禁止一切写/执行工具） | 关 |
-| `XENON_COMMAND_ALLOWLIST` | 命令首词白名单（逗号分隔） | 空=不限 |
-| `XENON_SESSION_EVENTS(_DIR)` | 事件日志（哈希链）开关/目录 | 开 |
-| `XENON_HOOKS` | hooks 开关 | 开 |
-| `GITHUB_TOKEN` / `GH_TOKEN` | GitHub 工具认证（提升 API 限额，自动带入 git clone） | 空 |
-| `XENON_INTENT_CLASSIFIER_ENABLED` | LLM 意图分类器 | 开 |
+| `XENON_APPROVAL_TTL` | 会话级 `a` 授权规则的有效期（秒） | 1800 |
+| `XENON_VERIFY_RETRIES` | 结构层失败后的同回合重试次数 | 2 |
+| `XENON_RETRY_BUDGET_MIN/MAX` | 重试轮的步数预算区间 | 10 / 40 |
+| `XENON_GATE_FUSE_THRESHOLD` | 同因结构失败的熔断阈值 | 2 |
+| `XENON_MAX_ITERATIONS` | 单次运行的步数上限 | 40 |
+| `XENON_MAX_TOKENS` | 单次模型调用的输出上限 | 8192 |
+| `XENON_MAX_CONTINUATIONS` | 截断后的自动续写次数 | 3 |
+| `NO_COLOR` | 标准环境变量；关闭输出与输入提示的颜色 | 未设置 |
+| `XENON_READ_ONLY` | 只读模式（禁用一切写/执行工具） | 关 |
+| `XENON_COMMAND_ALLOWLIST` | 命令首词白名单（逗号分隔） | 空 = 不限 |
+| `XENON_SESSION_EVENTS(_DIR)` | 事件日志开关 / 目录 | 开 |
+| `XENON_HOOKS` | 本地 hooks 开关 | 开 |
+| `GITHUB_TOKEN` / `GH_TOKEN` | GitHub 工具认证（提升 API 限额） | 空 |
 
-## 架构分层
+## Windows
 
-```
-xenon/
-├── repl/        交互层：REPL 主循环、引擎宿主(engine_host)、渲染(render)、
-│                回合契约(turn_contract)、任务状态(task_state)、命令组
-├── turn/        回合层：TurnGate 唯一校验层（L1 结构 / L2 语义提醒）
-├── session/     结构层：tree(会话树) / events(哈希链事件日志) / archive(回合归档)
-│                / projection(目标投影) / query(查询)
-├── engine/      引擎层：react / plan_execute / 组合引擎（纯执行器）
-├── nodes/       工具层：tool_executor / approval_policy / path_targets
-├── hooks/       本地 hooks 执行器
-└── sandbox/     沙箱 seam：只读模式 + 命令白名单 + WSL/Docker 检测
-```
-
-## Windows 说明
-
-- Windows Terminal (ConPTY) + PowerShell 全功能支持（粘贴、中文 IME、方向键）。
-- `XENON_TERMINAL_ANIMATION=0` 可关闭动画。
-- 推送 Git 若网络异常：`git -c http.proxy= -c https.proxy= -c http.sslBackend=openssl push`（或走代理 `http://127.0.0.1:3067`）。
+- Windows Terminal (ConPTY) + PowerShell 全功能支持（粘贴、中文输入法、方向键）。
+- `XENON_TERMINAL_ANIMATION=0` 关闭动画。
 
 ## 诚实边界
 
-- **机器不验证语义**：L2 语义层（宣称/准则/文件声称）命中时只提醒不阻断——内容真伪请以「待人工核验清单」为准自行核对。
-- **哈希链自证的是过程不是结论**：`/evidence` 证明事件流未被篡改，不证明模型回答正确。
-- **哈希链是无密钥锚点的完整性检查**：能发现偶然损坏、单点篡改与重排；
-  不能防「掌握写入权限者整链重算」。需要强抗篡改时请把事件目录放在
-  受控存储上。
-- **沙箱是检测 + 软件边界，不是真隔离**：不可信代码请在 WSL/Docker 容器内运行 Xenon。
-- `/review` 的 revert 只覆盖有 `.bak` 备份的编辑；用 git 管理不可替代。
-- 意图分类器默认走最快可用模型，有 ~1s 延迟；不可用自动降级正则（保守）。
+- **机器不验证语义。** L2 命中时只提醒不阻断——内容真伪请对照「待人工核验清单」自行确认。
+- **哈希链证明的是过程，不是结论。** 它保证事件流未被篡改，不保证模型答对了。
+- **链本身是无密钥锚点的完整性检查。** 能发现偶然损坏、单点篡改和重排，防不住"有写权限的人整链重算"；需要强抗篡改请把事件目录放到受控存储。（可选 HMAC 锚点见 #106）
+- **沙箱是检测 + 软件边界，不是真隔离。** 不可信代码请在 WSL / Docker 容器里运行。
+- `/review` 的回退只覆盖有 `.bak` 备份的编辑；版本管理仍请交给 git。
+- 意图分类器默认走最快可用的模型，约 1 秒延迟；不可用时会降级为正则（偏保守）。
 
-## 收录 / Featured in
+## 收录
 
 <!-- 按榜单影响力排序；新收录在合并后插入到对应位置 -->
 

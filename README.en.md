@@ -5,151 +5,127 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
-An interactive **AI coding agent (agent harness)** for the terminal: work with multiple model providers to read and write code, run commands, and verify results — with deterministic checks and auditable permission boundaries at every step.
-
 [English](README.en.md) | [简体中文](README.md)
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) (with an English summary) to contribute, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for our code of conduct.
+**A terminal AI coding agent that shows you exactly how much was actually verified.**
+
+Other agents say "done" and you take their word for it. Xenon splits the result in two: what the machine confirmed, and what you should check yourself.
+
+```text
+❯ fix the default timeout in config.py
+
+  🔧 edit_file  config.py                     ✓
+  🔧 run        pytest                        ✗ 2 failed
+  🏁 delivered (degraded) — 2 items the machine could not verify:
+     · "updated every call site" (only 1 of 3 references confirmed)
+     · integration tests were not run
+  🧾 evidence chain: 41 events, intact and continuous · /evidence replays it
+```
+
+<sub>Simplified illustration; the real UI shows the full record of every tool call.</sub>
 
 ```bash
 # 30-second install (no PyPI required)
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
-xenon   # first run walks you through setup (/setup: API key, model, engine)
+xenon   # first run walks you through setup (API key, model, engine)
 ```
 
-> **Windows troubleshooting — `'xenon' is not recognized`:**
-> - The entry script landed in a Scripts directory that is not on `PATH`. pip usually prints
->   `WARNING: The script xenon.exe is installed in '...' which is not on PATH` — run that full
->   path directly (`<dir>\Scripts\xenon.exe`) or add the directory to `PATH`.
-> - **PATH-independent entry point:** `python -m xenon` (v0.9.4+).
-> - Or use `uv tool install <same wheel URL>` / `pipx install <same wheel URL>` (they manage the entry point for you).
-> - Mixing conda with a standalone Python? Use a dedicated venv:
->   `python -m venv .venv` then `.venv\Scripts\python -m pip install <wheel URL>`.
+> **Windows:** if you get `'xenon' is not recognized`, the Scripts directory is not on `PATH` — pip usually prints `WARNING: The script xenon.exe is installed in '...' which is not on PATH`; run that path, add it to `PATH`, or use `python -m xenon` (v0.9.4+). Mixing conda with a standalone Python? Use a dedicated venv: `python -m venv .venv`.
 
-> **Positioning: the only agent harness that tells you *how much was actually machine-verified* and how much is left for you to check.**
-> Claude Code / Codex say "we don't verify semantics — trust us." Xenon says
-> **"the machine manages the evidence; you judge the truth."** The machine is
-> only responsible for *process truth* (what was done, what succeeded, whether
-> the evidence chain is intact); it discloses *content correctness* in tiers.
-> This is not "yet another LLM client" — it is an agent skeleton built around
-> **an evidence hash chain, a single semantic channel, and a replayable turn tree**.
+## What it actually does
 
-Actual `/evidence` output (structured turn summary + one-line chain self-check):
+- **Every tool call goes into an evidence chain.** Session events are written to an append-only hash chain (content hash + predecessor hash); `/evidence` recomputes and self-checks it at any time, catching corruption, single-point tampering and reordering.
+- **Exactly one blocking check.** "Hollow answers" (no work done, non-answers) are deterministic — caught, fed back for a retry, and fused if the same cause repeats. Semantic doubts never block delivery; they ship as a manual-verification checklist next to the answer.
+- **Every turn is a node in a tree.** `/rewind` goes back, `/fork` branches; after an interruption or fuse, typing "continue" resumes from that node without re-explaining context.
+- **Boundary actions ask first.** In-workspace writes don't interrupt you; out-of-boundary writes and commands open a unified panel with a diff preview, and approvals can be scoped by target and TTL. Subagents are read-only by default.
+- **Truncation and context limits are labeled honestly** instead of being papered over.
+
+## How a turn runs
+
+```text
+your input
+  → intent contract (LLM classifier first, conservative regex fallback)
+  → engine execution (budget checkpoints / loop detection / circuit breaker)
+  → turn gate (the single verdict point)
+      pass    → deliver
+      remind  → deliver + manual-verification checklist (non-blocking)
+      fail    → retry in the same turn; budget exhausted → degraded delivery
+      fuse    → fuse on repeated same-cause structural failure
+  → turn tree persisted + hash chain appended + turn archived
+```
+
+## What is verified, and what is not
+
+| Layer | What it checks | How it surfaces |
+|---|---|---|
+| **L0 Evidence** | Whether the process is real and replayable | Hash-chained event log; `/evidence` recomputes it |
+| **L1 Structural** | Whether the answer skipped the work | The only blocking check: retry / same-cause fuse |
+| **L2 Semantic** | Whether claims, criteria and file references hold up | Never blocks; produces a "manual verification checklist", or a degraded delivery after retries run out |
+
+Semantic judgement lives in exactly one place (`xenon/turn/gate.py`); engines do no semantic evaluation. Tool success/failure comes only from the tool's own receipt — never from keyword guessing.
+
+`/evidence` output (structured turn summary + a one-line chain self-check):
 
 <img src="docs/evidence-chain.png" alt="/evidence output example" width="720">
 
-## Three-layer trust model (the core difference)
-
-| Layer | Mechanism | Machine responsibility |
-|---|---|---|
-| **L0 Evidence** | The session event log is an append-only hash chain: every event carries a content hash + predecessor hash. The `/evidence` command recomputes and verifies it at any time (current session / all sessions / a specific session). | Proves **process truth** (what happened, success/failure, whether the chain is intact and continuous) |
-| **L1 Structural** | Hollow answers (deterministic, no semantic blind spots) are the only *blocking* class of check: on hit, feedback-then-retry within the same turn (half budget), fuse on repeats of the same cause. | Blocks **answers that didn't do the work** |
-| **L2 Semantic** | Claim audit / completion criteria / file claims / post-write verification: **never blocks delivery**; on hit, a yellow "manual verification checklist" panel ships alongside the answer. Retry exhaustion → degraded release. | Flags **what the machine could not verify** for you to check |
-
-Semantic judgment (claim audit / completion criteria / file claims / post-write verification) lives in exactly one place (`xenon/turn/gate.py`); engines only do deterministic structural correction (rewriting incomplete answers, retrying tool-less completion claims) — never LLM-based semantic judgment. Tool success/failure is decided solely by the `success` field of the tool's receipt (single semantic channel), never guessed from keywords.
-
-## Other core capabilities
-
-| Capability | Description |
-|---|---|
-| **Turn tree (TurnTree)** | Every user turn is a node (state / artifacts / verdict / event pointer). `/rewind` goes back, `/fork` branches, a bare "continue" resumes automatically from the **interrupted/fused node** |
-| **Budget checkpoints (not fixed steps)** | When the window is exhausted: progress → suspended with an approval prompt "continue?"; spinning in place → LoopDetector fuses; the same infrastructure error twice in a row → fast fuse with guidance |
-| **Structured turn archive** | Long conversations auto-compact: old turns deterministically fold into intent / tool outcomes / failure log / decisions / artifact blocks at zero LLM cost; also the retrieval summary source |
-| **Boundary approvals** | In-workspace writes are not asked about; out-of-boundary writes and commands go through a unified panel with diff preview and an `a` command that registers TTL-bound session rules. Approvals use a closed vocabulary, fail closed, and authorizations never come back to life via retrieval/session restore |
-| **Read-only subagents by default** | Subagents spawned via `spawn_agent` are capped at READ_ONLY; `read_only=false` is an explicit opt-in |
-| **Sandbox seam** | Read-only mode + command allowlist + WSL/Docker detection (honest disclaimer: a software boundary, not real isolation) |
-| **Honest truncation marking** | When output is cut off by length limits, the reply carries a visible marker instead of pretending to be complete |
-| **Hooks** | User/project `.xenon/hooks.yaml`: PreToolUse / PostToolUse / Stop / SubagentStop (exit 2 blocks, JSON on stdin) |
-
-## Quick start
-
-Current version: **v0.9.3** (single source of truth `xenon.__version__`; see [CHANGELOG](CHANGELOG.md) for history).
+## Install
 
 ```bash
-# Install straight from GitHub Releases (no PyPI account needed)
-# uv users: uv tool install <same URL>
+# Option 1 — install the wheel from GitHub Releases (recommended)
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
-```
 
-```bash
-# Or clone and install editable (repo is a shallow-friendly ~16 MB)
+# Option 2 — from source (editable; shallow clone saves bandwidth)
 git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
-cd Xenon
-python -m venv .venv
+cd Xenon && python -m venv .venv
 .venv/Scripts/python -m pip install -e .        # Windows
-source .venv/bin/activate && pip install -e .   # Linux/macOS
-
-# Run
-xenon
-# First run walks you through setup (/setup: key, model, engine)
+source .venv/bin/activate && pip install -e .   # Linux / macOS
 ```
 
-Common commands: `/evidence` (L0 evidence ledger self-check) `/plan` `/goal` `/review` `/rewind <n>` `/fork [n]` `/compact` `/sessions` `/permissions` `/tools` `/help`
+`uv tool install <wheel URL>` and `pipx install <wheel URL>` work too and handle the entry point for you.
 
-Resume on start: running `xenon` first shows a **session picker** (pick a historical session by number, or start fresh); you can also use `xenon resume` (most recent), `xenon resume <index>`, or `xenon --resume` (list). Non-interactive terminals skip the picker.
-
-## Session state machine (per turn)
+## Common commands
 
 ```
-user input → single semantic channel (TurnContract: LLM intent classifier + regex guardrails)
-  → engine execution (pure executor: budget checkpoint guard + interrupt + loop detection)
-  → TurnGate turn verification (the only verdict point)
-      pass   → deliver
-      remind → deliver + manual verification checklist (L2 semantic, non-blocking)
-      fail   → feedback-retry within the same turn (budget = first attempt steps / 2, clamped [10,40]);
-               exhausted → degraded delivery (degraded + checklist)
-      fuse   → fuse on repeated same-cause structural failure; deliver as incomplete
-  → node state persisted + hash-chain event appended + turn archived
+/evidence   evidence chain (current / all / one session)   /plan   plan mode
+/goal       set the goal for this session                  /review review edits with .bak revert
+/rewind     go back to an earlier turn                     /fork   branch from a turn
+/sessions   list sessions                                  /compact compact long conversations
+/permissions show current approvals                        /tools  list tools
 ```
+
+On start, `xenon` shows a session picker first (pick a history entry by number, or a fresh session); `xenon resume` restores the most recent one and replays the conversation.
 
 ## Environment variables
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `XENON_APPROVAL_TTL` | TTL (seconds) for session-level `a` approval rules | 1800 |
+| `XENON_APPROVAL_TTL` | TTL for session-level `a` approval rules (seconds) | 1800 |
 | `XENON_VERIFY_RETRIES` | Same-turn retries after a structural failure | 2 |
-| `XENON_RETRY_BUDGET_MIN/MAX` | Retry budget clamp | 10 / 40 |
-| `XENON_GATE_FUSE_THRESHOLD` | Fuse threshold for same-cause structural failures | 2 |
-| `XENON_MAX_ITERATIONS` | Steps per run (checkpoint window basis) | 40 |
-| `XENON_CHECKPOINT_STEPS` | Checkpoint window size | = step cap |
-| `XENON_MAX_TOKENS` | Max output tokens per LLM call | 8192 |
+| `XENON_RETRY_BUDGET_MIN/MAX` | Step-budget clamp for retry turns | 10 / 40 |
+| `XENON_GATE_FUSE_THRESHOLD` | Same-cause structural failure fuse threshold | 2 |
+| `XENON_MAX_ITERATIONS` | Steps per run | 40 |
+| `XENON_MAX_TOKENS` | Output cap per model call | 8192 |
 | `XENON_MAX_CONTINUATIONS` | Auto-continuations after truncation | 3 |
+| `NO_COLOR` | Standard flag; disables color in output and prompt | unset |
 | `XENON_READ_ONLY` | Read-only mode (all write/exec tools disabled) | off |
 | `XENON_COMMAND_ALLOWLIST` | Command first-word allowlist (comma-separated) | empty = unrestricted |
-| `XENON_SESSION_EVENTS(_DIR)` | Event log (hash chain) toggle/directory | on |
-| `XENON_HOOKS` | Hooks toggle | on |
-| `GITHUB_TOKEN` / `GH_TOKEN` | GitHub tool auth (raises API limits, used for git clone) | empty |
-| `XENON_INTENT_CLASSIFIER_ENABLED` | LLM intent classifier | on |
-
-## Architecture
-
-```
-xenon/
-├── repl/        Interface: REPL loop, engine host, rendering, turn contract,
-│                task state, command groups
-├── turn/        Turn layer: TurnGate — the single verification point (L1 structural / L2 semantic reminders)
-├── session/     Structural layer: tree (turn tree) / events (hash-chain log)
-│                / archive (turn archive) / projection (goal projection) / query
-├── engine/      Engine layer: react / plan_execute / combined engines (pure executors)
-├── nodes/       Tool layer: tool_executor / approval_policy / path_targets
-├── hooks/       Local hooks runner
-└── sandbox/     Sandbox seam: read-only mode + command allowlist + WSL/Docker detection
-```
+| `XENON_SESSION_EVENTS(_DIR)` | Event log toggle / directory | on |
+| `XENON_HOOKS` | Local hooks toggle | on |
+| `GITHUB_TOKEN` / `GH_TOKEN` | GitHub tool auth (raises API limits) | empty |
 
 ## Windows notes
 
 - Full support on Windows Terminal (ConPTY) + PowerShell (paste, CJK IME, arrow keys).
 - `XENON_TERMINAL_ANIMATION=0` disables animations.
-- If git push fails on flaky networks: `git -c http.proxy= -c https.proxy= -c http.sslBackend=openssl push` (or use a proxy via `http://127.0.0.1:3067`).
 
 ## Honest boundaries
 
-- **The machine does not verify semantics**: when L2 (claims/criteria/file claims) hits, it only warns — it never blocks. Judge content correctness yourself with the "manual verification checklist".
-- **The hash chain proves process, not conclusions**: `/evidence` proves the event stream was not tampered with; it does not prove the model's answers are correct.
-- **The hash chain is an unkeyed integrity check**: it detects accidental corruption, single-point tampering, and reordering; it cannot stop someone with write access from recomputing the whole chain. Keep the event directory on controlled storage for stronger guarantees.
-- **The sandbox is detection + a software boundary, not real isolation**: run Xenon inside a WSL/Docker container for untrusted code.
-- `/review`'s revert only covers edits that have `.bak` backups; git remains irreplaceable.
-- The intent classifier uses the fastest available model with ~1s latency; if unavailable it falls back to conservative regexes.
+- **The machine does not verify semantics.** When L2 hits it only warns — judge content correctness yourself with the checklist.
+- **The hash chain proves process, not conclusions.** It shows the event stream was not tampered with; it does not prove the model was right.
+- **The chain is an unkeyed integrity check.** It detects accidental corruption, single-point tampering and reordering; it cannot stop someone with write access from recomputing the whole chain. Put the event directory on controlled storage for stronger guarantees. (Optional HMAC anchor: see #106.)
+- **The sandbox is detection + a software boundary, not real isolation.** Run untrusted code inside WSL/Docker.
+- `/review`'s revert only covers edits with `.bak` backups; git is still the version history.
+- The intent classifier uses the fastest model available (~1s); if unavailable it falls back to conservative regexes.
 
 ## Featured in
 
