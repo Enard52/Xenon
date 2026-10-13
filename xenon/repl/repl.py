@@ -901,7 +901,7 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
         )
 
     def _set_console_title(self) -> None:
-        """Publish Xenon's static Star Core title before entering the REPL."""
+        """Publish Xenon's static runner-block title before entering the REPL."""
         self._terminal_activity.start()
 
     def run(self) -> None:
@@ -1313,7 +1313,7 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
             try:
                 from xenon.utils.logo import print_logo as _print_logo
 
-                _print_logo(animated=True, duration=2.0)
+                _print_logo(animated=True, duration=3.0)
             except Exception:
                 pass  # Logo 加载失败不影响启动
 

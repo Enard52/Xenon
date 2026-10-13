@@ -1,0 +1,21 @@
+{
+  "name": "xenon-brand",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript pipeline that authors the Xenon runner startup animation (pixel data + storyboard) and renders every brand asset from it.",
+  "scripts": {
+    "render": "tsx src/render.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@types/pngjs": "^6.0.5",
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

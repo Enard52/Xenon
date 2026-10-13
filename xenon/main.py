@@ -480,7 +480,7 @@ def _display_workflow_info(
         Panel(
             f"[bold cyan]Xenon[/bold cyan] v{version}\n"
             f"工作流: [bold]{workflow_name}[/bold]",
-            title="✶ Xenon",
+            title="█ Xenon",
         )
     )
 

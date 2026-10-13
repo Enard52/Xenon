@@ -7,6 +7,10 @@
 
 [English](README.en.md) | 简体中文
 
+<p align="center">
+  <img src="docs/logo-animated.gif" alt="Xenon — 像素跑者沿中线奔跑，逐渐消散重组为方块 XENON 标识" width="666">
+</p>
+
 **一个把"机器到底验证了什么"摊开给你看的终端 AI 编码代理。**
 
 别的 agent 说"完成了"，你只能选择相信它。Xenon 会把结果拆成两半说清楚：哪些是机器确认过的，哪些需要你自己看一眼。

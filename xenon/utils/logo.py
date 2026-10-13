@@ -1,8 +1,12 @@
-"""Xenon Star Core startup identity.
+"""Thin player for the Xenon runner startup identity.
 
-The old orbital hexagon collapsed into a box at small sizes.  Star Core uses an
-open eight-ray discharge and an asymmetric constellation, matching the icon and
-the animated terminal-tab title.
+The animation frames are authored in TypeScript (scripts/brand/) and emitted
+as xenon/utils/_brand_frames.py; this module only plays them on a TTY and
+derives the static plain/colored marks from the final frame.
+
+Storyboard: a line draws across the middle, a pixel runner sprints along it,
+dissolves block by block and reassembles into the blocky XENON wordmark; the
+surviving right-hand line segment becomes the signature dash.
 """
 
 from __future__ import annotations
@@ -10,6 +14,8 @@ from __future__ import annotations
 import sys
 import time
 from typing import Final
+
+from xenon.utils._brand_frames import FRAME_HEIGHT, FRAMES
 
 GRAY: Final = "\033[90m"
 WHITE: Final = "\033[97m"
@@ -20,34 +26,73 @@ DIM_BLUE: Final = "\033[34m"
 RESET: Final = "\033[0m"
 BOLD: Final = "\033[1m"
 
-LOGO_PLAIN: Final = r"""
-       ✧          ·
-          ╲  │  ╱
-      ────  Xe  ────
-          ╱  ✶  ╲
-    ·              ✦
+_ANSI: Final = {
+    "": "",
+    "w": f"{WHITE}{BOLD}",
+    "c": CYAN,
+    "b": BLUE,
+    "v": VIOLET,
+    "d": DIM_BLUE,
+    "g": GRAY,
+}
 
-        X E N O N
-"""
+_FRAME_HEIGHT: Final = FRAME_HEIGHT
 
-LOGO_COLORED: Final = f"""
-       {CYAN}✧{RESET}          {GRAY}·{RESET}
-          {DIM_BLUE}╲  │  ╱{RESET}
-      {BLUE}────{RESET}  {WHITE}{BOLD}Xe{RESET}  {VIOLET}────{RESET}
-          {DIM_BLUE}╱{RESET}  {CYAN}✶{RESET}  {DIM_BLUE}╲{RESET}
-    {GRAY}·{RESET}              {BLUE}✦{RESET}
 
-        {GRAY}X E N O N{RESET}
-"""
+def _render_frame(index: int, *, colored: bool) -> list[str]:
+    """Render one frame: a tuple of (color, run) rows becomes text rows."""
+    rows: list[str] = []
+    for row in FRAMES[index]:
+        if colored:
+            parts: list[str] = []
+            for color, run in row:
+                parts.append(_ANSI.get(color, "") + run)
+            if row and row[-1][0]:
+                parts.append(RESET)
+            rows.append("".join(parts).rstrip())
+        else:
+            rows.append("".join(run for _, run in row).rstrip())
+    return rows
 
-_FRAME_HEIGHT = 8
-_BREATH_COLORS: tuple[str, ...] = (
-    DIM_BLUE,
-    BLUE,
-    CYAN,
-    WHITE,
-    CYAN,
-    BLUE,
+
+def _expand(index: int) -> list[list[tuple[str, str]]]:
+    """Expand one frame into per-cell (char, color) pairs."""
+    return [
+        [(ch, color) for color, run in row for ch in run] for row in FRAMES[index]
+    ]
+
+
+def _final_mark_rows(colored: bool = False) -> list[str]:
+    """Crop the settled final frame down to the bare mark (word + dash)."""
+    cells = _expand(-1)
+    lit_rows = [r for r, row in enumerate(cells) if any(ch != " " for ch, _ in row)]
+    lit_cols = [c for row in cells for c, (ch, _) in enumerate(row) if ch != " "]
+    if not lit_rows or not lit_cols:  # pragma: no cover - frame data is static
+        return []
+    rows: list[str] = []
+    for r in range(min(lit_rows), max(lit_rows) + 1):
+        parts: list[str] = []
+        used_color = False
+        for c in range(min(lit_cols), max(lit_cols) + 1):
+            ch, color = cells[r][c]
+            if colored and color:
+                parts.append(_ANSI.get(color, "") + ch)
+                used_color = True
+            else:
+                parts.append(ch)
+        if colored and used_color:
+            parts.append(RESET)
+        rows.append("".join(parts))
+    return rows
+
+
+_INDENT = " " * 8
+
+LOGO_PLAIN: Final = (
+    "\n".join(_INDENT + row.rstrip() for row in _final_mark_rows(colored=False)) + "\n"
+)
+LOGO_COLORED: Final = (
+    "\n".join(_INDENT + row.rstrip() for row in _final_mark_rows(colored=True)) + "\n"
 )
 
 
@@ -62,57 +107,27 @@ def _draw_frame(lines: list[str]) -> None:
     sys.stdout.flush()
 
 
-def _point(index: int, phase: int, bright: str, dim: str = GRAY) -> str:
-    """Twinkle a constellation point without moving its screen position."""
-    distance = (index - phase) % 4
-    if distance == 0:
-        return f"{bright}✦{RESET}"
-    if distance == 1:
-        return f"{bright}✧{RESET}"
-    return f"{dim}·{RESET}"
-
-
-def _build_frame(phase: int, core_color: str) -> list[str]:
-    top_left = _point(0, phase, CYAN)
-    top_right = _point(1, phase, VIOLET)
-    bottom_left = _point(3, phase, BLUE)
-    bottom_right = _point(2, phase, CYAN)
-    ray_left = CYAN if phase % 2 == 0 else BLUE
-    ray_right = VIOLET if phase % 2 == 0 else BLUE
-
-    return [
-        f"       {top_left}          {top_right}",
-        f"          {DIM_BLUE}╲  │  ╱{RESET}",
-        f"      {ray_left}────{RESET}  {WHITE}{BOLD}Xe{RESET}  {ray_right}────{RESET}",
-        f"          {DIM_BLUE}╱{RESET}  {core_color}✶{RESET}  {DIM_BLUE}╲{RESET}",
-        f"    {bottom_left}              {bottom_right}",
-        "",
-        f"        {GRAY}X E N O N{RESET}",
-        "",
-    ]
-
-
-def play_animation(duration: float = 2.0, fps: float = 8.0) -> None:
-    """Ignite the Star Core, twinkle its constellation, then settle."""
+def play_animation(duration: float = 3.0, fps: float = 12.0) -> None:
+    """Play the runner animation: line, sprint, dissolve into XENON, dash."""
     frame_interval = 1.0 / max(1.0, fps)
     total_frames = max(1, int(max(0.0, duration) * max(1.0, fps)))
+    last = len(FRAMES) - 1
 
     sys.stdout.write("\n" * _FRAME_HEIGHT)
     _move_up()
     for frame_index in range(total_frames):
-        phase = (frame_index // 2) % 4
-        core_color = _BREATH_COLORS[frame_index % len(_BREATH_COLORS)]
-        _draw_frame(_build_frame(phase, core_color))
+        source = round(frame_index * last / max(1, total_frames - 1))
+        _draw_frame(_render_frame(source, colored=True))
         _move_up()
         time.sleep(frame_interval)
 
-    _draw_frame(_build_frame(0, CYAN))
+    _draw_frame(_render_frame(last, colored=True))
     sys.stdout.write("\n")
     sys.stdout.flush()
 
 
-def print_logo(*, animated: bool = True, duration: float = 2.0) -> None:
-    """Print the Star Core identity, animating only on an interactive TTY."""
+def print_logo(*, animated: bool = True, duration: float = 3.0) -> None:
+    """Print the runner identity, animating only on an interactive TTY."""
     if animated and sys.stdout.isatty():
         play_animation(duration=duration)
         return
@@ -123,4 +138,4 @@ def print_logo(*, animated: bool = True, duration: float = 2.0) -> None:
 
 
 if __name__ == "__main__":
-    print_logo(animated=True, duration=2.0)
+    print_logo(animated=True, duration=3.0)

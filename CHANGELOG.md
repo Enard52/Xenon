@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### 品牌：跑者启动动画
+
+- 全新启动动画：中间拉线 → 像素跑者奔跑 → 逐步消散重组为方块 XENON 字样 → 右侧中线 dash 收尾；动画播完才进入欢迎界面。
+- 动画创作管线迁移到 TypeScript（`scripts/brand`：pixels / storyboard / render），同一像素数据生成终端帧表 `xenon/utils/_brand_frames.py`、`docs/logo.svg`、`docs/logo.png`（仓库头像）与 `docs/logo-animated.gif`（README 嵌入）。
+- `xenon/utils/logo.py` 退化为薄播放器：读帧表 + TTY ANSI 播放 + 非 TTY 静态降级；启动动画时长 3 秒。
+- 终端标签活动状态由星位 `✶··` 更新为方块 `█··`（ASCII 帧不变）；`xenon` 工作流面板标题同步。
+- README（中/英）嵌入启动动画 GIF。
+
 ## [0.9.3] — 2026-10-12
 
 ### 会话恢复体验

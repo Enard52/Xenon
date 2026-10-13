@@ -7,6 +7,10 @@
 
 [English](README.en.md) | [简体中文](README.md)
 
+<p align="center">
+  <img src="docs/logo-animated.gif" alt="Xenon — a pixel runner sprints along the middle line and dissolves into the blocky XENON wordmark" width="666">
+</p>
+
 **A terminal AI coding agent that shows you exactly how much was actually verified.**
 
 Other agents say "done" and you take their word for it. Xenon splits the result in two: what the machine confirmed, and what you should check yourself.

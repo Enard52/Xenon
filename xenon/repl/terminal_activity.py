@@ -2,9 +2,9 @@
 
 Terminal emulators do not expose a shared protocol for animating a bitmap tab
 icon.  They do, however, widely support updating the tab/window title.  Xenon
-therefore renders the Star Core identity as a fixed-width three-cell starfield:
+therefore renders the runner identity as a fixed-width three-cell block dash:
 
-    ✶·· Xenon  ->  ·✶· Xenon  ->  ··✶ Xenon
+    █·· Xenon  ->  ·█· Xenon  ->  ··█ Xenon
 
 Only the title changes; no cursor movement or terminal body output is involved.
 The animation is deliberately stopped whenever Xenon is waiting for input.
@@ -34,11 +34,11 @@ class TerminalActivityState(Enum):
 
 
 _UNICODE_FRAMES: tuple[str, ...] = (
-    "✶·· Xenon",
-    "·✶· Xenon",
-    "··✶ Xenon",
-    "·✧✶ Xenon",
-    "✧✶· Xenon",
+    "█·· Xenon",
+    "·█· Xenon",
+    "··█ Xenon",
+    "·░█ Xenon",
+    "░█· Xenon",
 )
 _ASCII_FRAMES: tuple[str, ...] = (
     "*.. Xenon",
@@ -157,7 +157,7 @@ class TerminalActivityIndicator:
 
     @contextmanager
     def waiting(self, detail: str = "等待确认") -> Iterator[None]:
-        """Freeze the starfield while Xenon is blocked on a user decision."""
+        """Freeze the block dash while Xenon is blocked on a user decision."""
         previous = self.state
         self.set_state(TerminalActivityState.WAITING, detail=detail)
         try:
@@ -244,7 +244,7 @@ class TerminalActivityIndicator:
         else:
             if state is TerminalActivityState.IDLE:
                 return self._frames[0]
-            marker = "✶" if state is TerminalActivityState.ERROR else "☆"
+            marker = "█" if state is TerminalActivityState.ERROR else "☆"
 
         default_details = {
             TerminalActivityState.WAITING: "等待确认",

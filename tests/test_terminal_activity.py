@@ -1,4 +1,4 @@
-"""Tests for the terminal-tab Star Core activity state machine."""
+"""Tests for the terminal-tab runner block-dash activity state machine."""
 
 from __future__ import annotations
 
@@ -38,16 +38,16 @@ def test_running_animates_and_idle_stops():
     indicator.start()
     indicator.set_state(TerminalActivityState.RUNNING)
     deadline = time.monotonic() + 1
-    while "·✶· Xenon" not in titles and time.monotonic() < deadline:
+    while "·█· Xenon" not in titles and time.monotonic() < deadline:
         time.sleep(0.01)
     indicator.idle()
     settled_count = len(titles)
     time.sleep(0.05)
 
-    assert titles[0] == "✶·· Xenon"
-    assert "✶·· Xenon" in titles
-    assert "·✶· Xenon" in titles
-    assert titles[settled_count - 1] == "✶·· Xenon"
+    assert titles[0] == "█·· Xenon"
+    assert "█·· Xenon" in titles
+    assert "·█· Xenon" in titles
+    assert titles[settled_count - 1] == "█·· Xenon"
     assert len(titles) == settled_count
 
     indicator.close()
@@ -69,10 +69,10 @@ def test_waiting_freezes_then_resumes_parent_activity():
             assert indicator.state is TerminalActivityState.WAITING
             assert titles[-1] == "☆ Xenon · 等待命令确认"
         assert indicator.state is TerminalActivityState.RUNNING
-        assert titles[-1] == "✶·· Xenon"
+        assert titles[-1] == "█·· Xenon"
 
     assert indicator.state is TerminalActivityState.IDLE
-    assert titles[-1] == "✶·· Xenon"
+    assert titles[-1] == "█·· Xenon"
     indicator.close()
 
 
@@ -223,7 +223,7 @@ def test_repl_permission_prompt_freezes_and_resumes_activity(monkeypatch):
     assert prompt_options["case_sensitive"] is False
     assert prompt_options["choices"] == ["y", "n", "a", "q"]
     assert "☆ Xenon · 等待工具授权" in titles
-    assert titles[-1] == "✶·· Xenon"
+    assert titles[-1] == "█·· Xenon"
     indicator.close()
 
 
@@ -259,6 +259,6 @@ def test_repl_main_loop_animates_submitted_work_and_restores_title(monkeypatch):
     repl.run()
 
     assert submitted == ["do work"]
-    assert "✶·· Xenon" in titles
-    assert "✶·· Xenon" in titles
+    assert "█·· Xenon" in titles
+    assert "█·· Xenon" in titles
     assert titles[-1] == "shell title"

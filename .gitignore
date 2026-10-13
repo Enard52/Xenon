@@ -92,3 +92,4 @@ docs/promotion/
 FETCH_HEAD
 trunk/
 no_such_dir_xyz/
+node_modules/
