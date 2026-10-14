@@ -29,6 +29,8 @@
    pytest -q -m "not live"
    ```
 
+   详细的本地测试命令、跨平台差异与构建管线见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
 4. **PR 描述必须包含「CI 证据」段落**（评审的必读项，模板见 `.github/PULL_REQUEST_TEMPLATE.md`）：
 
    - 附上你**实际执行的完整命令**与**完整结果行**，例如：
@@ -77,6 +79,8 @@ expected vs. actual results, and sanitized logs or error messages.
    ruff check xenon tests evals
    pytest -q -m "not live"
    ```
+
+   For detailed local test recipes, cross-platform notes, and brand asset pipelines, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 4. **The PR description must include a "CI evidence" section** (required for
    review; template in `.github/PULL_REQUEST_TEMPLATE.md`):
