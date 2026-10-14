@@ -23,7 +23,7 @@
 
 | 维度 | Xenon | Aider | Claude Code | OpenCode | Crush |
 | --- | :---: | :---: | :---: | :---: | :---: |
-| **MCP 协议** | ✅ stdio + SSE | ❌ | ✅ 一等公民 | ✅ | ✅ stdio/http/sse |
+| **MCP 协议** | ⚠️ stdio + SSE（简化实现，无 endpoint 发现/会话关联，见 #103） | ❌ | ✅ 一等公民 | ✅ | ✅ stdio/http/sse |
 | **多模型路由** | ✅ 12 家厂商 | ✅ ~10 | ❌ Claude only | ✅ 50+ | ✅ 18+ |
 | **多范式引擎** | ✅ **7 种** | ❌ | ❌ | ❌ | ⚠️ 可 mid-session 换 LLM |
 | **本地优先** | ✅ Ollama + 本地凭据 | ⚠️ CLI 本地，模型云 | ❌ | ✅ | ✅ Ollama / llama.cpp |
@@ -42,13 +42,13 @@
 
 | 项目 | 能力 |
 | --- | --- |
-| **Xenon** | stdio + SSE 双传输；子进程用 `select` + 墙钟超时（v0.2.0 B11 修复），不会被 `readline` 无限阻塞；进程退出用 `terminate()` + 兜底 `kill()`，**无僵尸进程**。 |
+| **Xenon** | stdio 传输完整；SSE 为简化实现（无 `endpoint` 发现与流上响应 ID 关联，见 [#103](https://github.com/xianyu-sheng/Xenon/issues/103)）；子进程用 `select` + 墙钟超时（v0.2.0 B11 修复），不会被 `readline` 无限阻塞；进程退出用 `terminate()` + 兜底 `kill()`，**无僵尸进程**。 |
 | Aider | 不支持 MCP。用自定义 plugin 机制扩展工具。 |
 | Claude Code | MCP 一等公民，原生支持；Anthropic 自家协议。 |
 | OpenCode | 支持 MCP。 |
 | Crush | 支持 MCP（stdio/http/sse 三种类型）；不支持自动重启 MCP server。 |
 
-**Xenon 优势**：和 Crush 一样全传输类型支持，但加上 B11 修复的墙钟超时（v0.2.0 `bf6e83a` 修复），子进程挂死不会拖死整个 agent。
+**Xenon 优势**：stdio 传输完整，且带 B11 修复的墙钟超时（v0.2.0 `bf6e83a` 修复），子进程挂死不会拖死整个 agent；SSE 当前为简化实现（见 [#103](https://github.com/xianyu-sheng/Xenon/issues/103)），不要视作与 Crush 同级的全传输支持。
 **Xenon 劣势**：和 Claude Code 相比，MCP server **不自动重启**——子进程挂掉需要 `/mcp add` 重新添加。这是已知后续项（不是技术不能，是优先级让位给 #19 等 v0.3.0 重写）。
 
 ### 2. 多模型路由
