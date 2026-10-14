@@ -61,20 +61,34 @@ def _style_to_ansi(style) -> str:
 
 
 def resolve_ansi_map(theme=None) -> dict[str, str]:
-    """Map semantic frame colors to ANSI codes for the given Rich theme.
+    """Map semantic frame colors to ANSI codes for the given theme source.
 
-    Falls back to the default token styles for any "logo.*" token the theme
-    does not define, so the animation degrades gracefully.
+    Accepts anything theme-like: a Rich Theme, a Rich ThemeStack (the live
+    console theme), or a plain styles mapping.  Falls back to the default
+    token styles for any "logo.*" token the theme does not define, so the
+    animation degrades gracefully.
     """
     from xenon.repl.theme import DEFAULT_TOKEN_STYLES
 
     styles: dict[str, object] = dict(DEFAULT_TOKEN_STYLES)
     if theme is not None:
-        theme_styles = getattr(theme, "styles", None)
-        if isinstance(theme_styles, Mapping):
-            for name, style in theme_styles.items():
-                if isinstance(name, str) and name.startswith("logo.") and style is not None:
-                    styles[name] = style
+        getter = getattr(theme, "get", None)
+        if callable(getter):
+            # Rich ThemeStack exposes .get(token) -> Style | None.
+            for key in _COLOR_KEYS:
+                style = getter(f"logo.{key}")
+                if style is not None:
+                    styles[f"logo.{key}"] = style
+        else:
+            theme_styles = getattr(theme, "styles", None)
+            if isinstance(theme_styles, Mapping):
+                for name, style in theme_styles.items():
+                    if (
+                        isinstance(name, str)
+                        and name.startswith("logo.")
+                        and style is not None
+                    ):
+                        styles[name] = style
     return {key: _style_to_ansi(styles.get(f"logo.{key}")) for key in _COLOR_KEYS}
 
 
