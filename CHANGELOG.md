@@ -13,6 +13,10 @@
 - 终端标签活动状态由星位 `✶··` 更新为方块 `█··`（ASCII 帧不变）；`xenon` 工作流面板标题同步。
 - README（中/英）嵌入启动动画 GIF。
 
+### 收录
+
+- 新增 [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai) 收录（Agentic AI & Multi-Agent Systems → Autonomous Coding Agents）。
+
 ## [0.9.3] — 2026-10-12
 
 ### 会话恢复体验

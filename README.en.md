@@ -135,6 +135,7 @@ On start, `xenon` shows a session picker first (pick a history entry by number, 
 
 <!-- Ordered by list prominence; insert new entries in place once merged. -->
 
+- [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai) — open-source AI project list (Agentic AI & Multi-Agent Systems → Autonomous Coding Agents)
 - [awesome-mcp-lists](https://github.com/collabnix/awesome-mcp-lists) — Collabnix community list of MCP servers, clients and toolkits (MCP Clients → Command Line Tools)
 
 ## License

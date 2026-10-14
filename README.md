@@ -135,6 +135,7 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 
 <!-- 按榜单影响力排序；新收录在合并后插入到对应位置 -->
 
+- [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai) — 开源 AI 项目清单（Agentic AI & Multi-Agent Systems → Autonomous Coding Agents）
 - [awesome-mcp-lists](https://github.com/collabnix/awesome-mcp-lists) — Collabnix 社区的 MCP 客户端 / 工具清单（MCP Clients → Command Line Tools）
 
 ## License
