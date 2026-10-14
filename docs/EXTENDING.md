@@ -1,5 +1,7 @@
 # 扩展 Xenon
 
+> 中文 | [English](EXTENDING.en.md)
+
 Xenon 提供五条注册式扩展路径，无需修改核心代码。
 
 ## 1. 注册 MCP 服务器（终端命令）
