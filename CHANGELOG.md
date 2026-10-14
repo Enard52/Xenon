@@ -7,9 +7,9 @@
 
 ### 品牌：跑者启动动画
 
-- 全新启动动画：中间拉线 → 像素跑者奔跑 → 逐步消散重组为方块 XENON 字样 → 右侧中线 dash 收尾；动画播完才进入欢迎界面。
-- 动画创作管线迁移到 TypeScript（`scripts/brand`：pixels / storyboard / render），同一像素数据生成终端帧表 `xenon/utils/_brand_frames.py`、`docs/logo.svg`、`docs/logo.png`（仓库头像）与 `docs/logo-animated.gif`（README 嵌入）。
-- `xenon/utils/logo.py` 退化为薄播放器：读帧表 + TTY ANSI 播放 + 非 TTY 静态降级；启动动画时长 3 秒。
+- 全新启动动画：中间拉线 → 像素跑者沿中线持续奔跑 → 身体粒子边跑边剥离（四肢先散、头部最后），在身后组装成方块 XENON 字样，中线被字母吸收、远端回缩，两侧各留一段对称签名线（`────── XENON ──────`），最后残余粒子汇入右侧线收尾；动画播完才进入欢迎界面。
+- 动画创作管线用 TypeScript（`scripts/brand`：pixels / storyboard / render），同一像素数据生成终端帧表 `xenon/utils/_brand_frames.py`、`docs/logo.svg`、`docs/logo.png`（仓库头像）与 `docs/logo-animated.gif`（README 嵌入）。
+- 帧表只存语义色键，`xenon/utils/logo.py` 播放时按主题解析：新增 `logo.*` 语义 token（9 个，入 `xenon/repl/theme.py` 目录与冻结测试），动画颜色受 `/theme` 管辖；`NO_COLOR` 时动画降级为无色。
 - 终端标签活动状态由星位 `✶··` 更新为方块 `█··`（ASCII 帧不变）；`xenon` 工作流面板标题同步。
 - README（中/英）嵌入启动动画 GIF。
 

@@ -1313,7 +1313,7 @@ class REPL(EngineHostMixin, DirectChatMixin, TurnFlowMixin, ApprovalUxMixin, Ses
             try:
                 from xenon.utils.logo import print_logo as _print_logo
 
-                _print_logo(animated=True, duration=3.0)
+                _print_logo(animated=True, duration=3.0, theme=console.theme)
             except Exception:
                 pass  # Logo 加载失败不影响启动
 

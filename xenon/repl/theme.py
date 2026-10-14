@@ -23,6 +23,17 @@ TOKENS: tuple[str, ...] = (
     "link",
     "code",
     "command",
+    # 启动动画（跑者 Logo）专用语义 token：帧表只存语义色键，
+    # 播放时按主题解析，/theme 换色后动画自动跟随。
+    "logo.hot",
+    "logo.track",
+    "logo.runner",
+    "logo.letter-a",
+    "logo.letter-b",
+    "logo.letter-c",
+    "logo.dash",
+    "logo.spark",
+    "logo.ghost",
 )
 
 DEFAULT_TOKEN_STYLES: dict[str, str] = {
@@ -40,6 +51,15 @@ DEFAULT_TOKEN_STYLES: dict[str, str] = {
     "border": "#334155",
     "link": "underline #67e8f9",
     "code": "#fde68a",
+    "logo.hot": "bold #f0f9ff",
+    "logo.track": "#334155",
+    "logo.runner": "bold #67e8f9",
+    "logo.letter-a": "#67e8f9",
+    "logo.letter-b": "#818cf8",
+    "logo.letter-c": "#c4b5fd",
+    "logo.dash": "#67e8f9",
+    "logo.spark": "#67e8f9",
+    "logo.ghost": "dim #94a3b8",
 }
 
 DEFAULT_PT_STYLE: dict[str, str] = {

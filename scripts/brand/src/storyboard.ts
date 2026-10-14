@@ -2,21 +2,23 @@
  * Frame-by-frame storyboard for the runner startup animation.
  *
  * Timeline (fractions of the full animation):
- *   [0.00 .. 0.18]  the middle line draws in from the left
- *   [0.18 .. 0.50]  the pixel runner sprints along the line (line is
- *                   consumed behind him)
- *   [0.50 .. 0.83]  the runner stops inside the word zone and dissolves
- *                   right-to-left while the letters grow in left-to-right
- *   [0.83 .. 0.93]  the word flashes, the signature dash draws rightward and
- *                   the leftover line retracts
- *   [0.93 .. 1.00]  settled final mark: XENON + mid-right dash
+ *   [0.00 .. 0.15]  the middle line draws in from the left
+ *   [0.15 .. 0.45]  the pixel runner sprints along the intact line
+ *   [0.45 .. 0.85]  the runner keeps running — never stopping — while
+ *                   particles shed from his body (limbs first, head last)
+ *                   and assemble the XENON wordmark behind him; the line is
+ *                   absorbed under the letters and retracts at the far right
+ *   [0.85 .. 0.93]  the word flashes, the last particles fly into the
+ *                   right-hand line, and both side lines settle
+ *   [0.93 .. 1.00]  settled final mark: ────── XENON ──────
  */
 
 import {
   ColorKey,
-  DASH_LEFT,
-  DASH_RIGHT,
+  DASH_GAP,
   HEIGHT,
+  LEFT_DASH_LEFT,
+  LEFT_DASH_RIGHT,
   LETTER_COLOR,
   LETTER_H,
   LETTER_W,
@@ -27,8 +29,11 @@ import {
   P_LINE_END,
   P_RUN_END,
   P_WORD_END,
+  RIGHT_DASH_LEFT,
+  RIGHT_DASH_RIGHT,
   RUN_END_X,
   RUNNER_FRAMES,
+  RUNNER_LEAD_OFFSET,
   RUNNER_ROW,
   RUNNER_W,
   RUN_START_X,
@@ -38,6 +43,7 @@ import {
   WORD,
   WORD_LEFT,
   WORD_ROW,
+  WORD_W,
 } from "./pixels.ts";
 
 export type Cell = [string, ColorKey | ""];
@@ -57,6 +63,10 @@ function put(g: Grid, r: number, c: number, ch: string, color: ColorKey | ""): v
   if (r >= 0 && r < HEIGHT && c >= 0 && c < WIDTH) g[r][c] = [ch, color];
 }
 
+function erase(g: Grid, r: number, c: number): void {
+  if (r >= 0 && r < HEIGHT && c >= 0 && c < WIDTH) g[r][c] = [" ", ""];
+}
+
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
@@ -69,9 +79,9 @@ function easeOut(t: number): number {
 function drawTrack(g: Grid, left: number, right: number, head?: number): void {
   const l = Math.max(TRACK_LEFT, Math.round(left));
   const r = Math.min(TRACK_RIGHT, Math.round(right));
-  for (let c = l; c <= r; c++) put(g, LINE_ROW, c, "─", "d");
+  for (let c = l; c <= r; c++) put(g, LINE_ROW, c, "─", "track");
   if (head !== undefined && head >= TRACK_LEFT && head <= TRACK_RIGHT) {
-    put(g, LINE_ROW, head, "─", "w");
+    put(g, LINE_ROW, head, "─", "hot");
   }
 }
 
@@ -80,9 +90,32 @@ function drawRunner(g: Grid, x: number, frame: string[]): void {
   for (let r = 0; r < frame.length; r++) {
     const row = frame[r];
     for (let c = 0; c < row.length; c++) {
-      if (row[c] === "█") put(g, RUNNER_ROW + r, x + c, "█", r < 3 ? "w" : "c");
+      if (row[c] === "█") put(g, RUNNER_ROW + r, x + c, "█", r < 3 ? "hot" : "runner");
     }
   }
+}
+
+/** Column of the latest grown letter pixel (0-based filled index). */
+function growthFrontCol(grown: number): number {
+  if (grown <= 0) return WORD_LEFT - 1;
+  const idx = Math.min(grown, WORD.length * LETTER_W) - 1;
+  const li = Math.floor(idx / LETTER_W);
+  const c = idx % LETTER_W;
+  return WORD_LEFT + li * LETTER_PITCH + c;
+}
+
+/**
+ * Runner melt schedule: blocks shed from the extremities toward the core
+ * (columns far from the head/torso axis go first), so the figure stays
+ * visible — running — until the word is essentially complete.
+ * Returns "solid", "ghost" (melting) or "gone" for a sprite column at time q.
+ */
+function runnerMelt(q: number, c: number): "solid" | "ghost" | "gone" {
+  const dist = Math.abs(c - 3.5); // sprite core axis
+  const melt = 0.25 + 0.75 * (1 - dist / 3.5);
+  if (q < melt) return "solid";
+  if (q < Math.min(1, melt + 0.06)) return "ghost";
+  return "gone";
 }
 
 /**
@@ -95,7 +128,7 @@ function drawWord(g: Grid, grown: number, allBright = false): void {
     for (let c = 0; c < LETTER_W; c++) {
       if (filled >= grown) return;
       const bright = allBright || filled >= grown - 3;
-      const color = bright ? "w" : LETTER_COLOR[WORD[li]];
+      const color = bright ? "hot" : LETTER_COLOR[WORD[li]];
       for (let r = 0; r < LETTER_H; r++) {
         if (LETTERS[WORD[li]][r][c] === "█") {
           put(g, WORD_ROW + r, WORD_LEFT + li * LETTER_PITCH + c, "█", color);
@@ -119,58 +152,98 @@ export function composeFrame(i: number, total: number): Grid {
   }
 
   if (t < P_RUN_END) {
-    // 2. The runner sprints along the line; the line is consumed behind him.
+    // 2. The runner sprints along the intact line with a particle trail.
     const p = (t - P_LINE_END) / (P_RUN_END - P_LINE_END);
     const x = Math.round(lerp(RUN_START_X, RUN_END_X, p));
-    drawTrack(g, x + RUNNER_W, TRACK_RIGHT);
+    drawTrack(g, TRACK_LEFT, TRACK_RIGHT);
     drawRunner(g, x, RUNNER_FRAMES[Math.floor(i / 2) % RUNNER_FRAMES.length]);
-    if (x > RUN_START_X) put(g, LINE_ROW, x - 1, "░", "d");
+    if (x > RUN_START_X) {
+      put(g, LINE_ROW, x - 1, "░", "ghost");
+      put(g, LINE_ROW - 1, x - 2, "·", "spark");
+    }
     return g;
   }
 
   if (t < P_WORD_END) {
-    // 3. The runner dissolves into the letters.
+    // 3. The runner keeps running while his particles assemble the word.
     const q = (t - P_RUN_END) / (P_WORD_END - P_RUN_END);
-    // The left line segment retracts toward the word while it dissolves.
-    // Starts at the run-phase end (continuous with the sprint) and retracts
-    // to the word's left edge.
-    drawTrack(g, lerp(RUN_END_X + RUNNER_W, WORD_LEFT, q), TRACK_RIGHT);
-    // Runner blocks break apart right-to-left as the letters consume him.
+    const grown = Math.round(q * WORD.length * LETTER_W);
     const frame = RUNNER_FRAMES[Math.floor(i / 2) % RUNNER_FRAMES.length];
-    const keep = Math.max(0, Math.floor(RUNNER_W * (1 - q * 1.15)));
+
+    // The runner leads the growth front: his tail overlaps the newest
+    // letters, his head stays visible ahead of them.
+    const x = Math.max(RUN_END_X, growthFrontCol(grown) - RUNNER_LEAD_OFFSET);
+
+    // Track: drawn full, then absorbed under/around the word.
+    drawTrack(g, TRACK_LEFT, TRACK_RIGHT);
+    // Runner blocks shed from the extremities toward the core.
     for (let r = 0; r < frame.length; r++) {
       const row = frame[r];
       for (let c = 0; c < row.length; c++) {
         if (row[c] !== "█") continue;
-        if (c < keep) put(g, RUNNER_ROW + r, RUN_END_X + c, "█", r < 3 ? "w" : "c");
-        else if (c < keep + 2) put(g, RUNNER_ROW + r, RUN_END_X + c, "░", "c");
+        const state = runnerMelt(q, c);
+        if (state === "solid") {
+          put(g, RUNNER_ROW + r, x + c, "█", r < 3 ? "hot" : "runner");
+        } else if (state === "ghost") {
+          put(g, RUNNER_ROW + r, x + c, "░", "ghost");
+        }
       }
     }
-    drawWord(g, Math.round(q * WORD.length * LETTER_W));
-    // Sparks drift above the dissolve zone (deterministic pseudo-random).
-    const span = Math.max(1, WORD_LEFT - (RUN_END_X + 2) + 4);
+    // The word assembles behind him from the shed particles.
+    drawWord(g, grown);
+    // The line retracts from the far right end.
+    const outerEnd = Math.round(lerp(TRACK_RIGHT, RIGHT_DASH_RIGHT, q));
+    for (let c = outerEnd + 1; c <= TRACK_RIGHT; c++) erase(g, LINE_ROW, c);
+    // Gap cells between word and side lines fade as the letters arrive.
+    if (q >= 0.4) {
+      erase(g, LINE_ROW, LEFT_DASH_RIGHT + 1);
+      erase(g, LINE_ROW, LEFT_DASH_RIGHT + 2);
+    }
+    if (q >= 0.75) {
+      erase(g, LINE_ROW, RIGHT_DASH_LEFT - 2);
+      erase(g, LINE_ROW, RIGHT_DASH_LEFT - 1);
+    }
+    // Particle stream: shed blocks fly from the runner toward the letters.
+    const from = x + RUNNER_W - 2;
+    const to = Math.max(from + 1, growthFrontCol(grown) + 1);
     for (let k = 0; k < 2; k++) {
-      const c = RUN_END_X + 2 + ((i * 7 + k * 13) % span);
-      const r = WORD_ROW - 2 + ((i * 3 + k * 5) % 3);
-      if (g[r][c][0] === " ") put(g, r, c, k === 0 ? "░" : "·", "c");
+      const pos = Math.round(lerp(from, to, 0.3 + k * 0.35));
+      const r = LINE_ROW - 1 - (k % 2);
+      if (g[r][pos][0] === " ") put(g, r, pos, k === 0 ? "░" : "·", "spark");
     }
     return g;
   }
 
   if (t < P_DASH_END) {
-    // 4. The word flashes, the dash draws rightward, the leftover line fades.
+    // 4. The word flashes; the last particles fly into the right-hand line
+    //    and both side lines settle.
     const q = (t - P_WORD_END) / (P_DASH_END - P_WORD_END);
-    drawWord(g, WORD.length * LETTER_W, q < 0.25);
-    const right = Math.round(lerp(DASH_LEFT, DASH_RIGHT, easeOut(q)));
-    for (let c = DASH_LEFT; c <= right; c++) put(g, LINE_ROW, c, "─", "c");
-    put(g, LINE_ROW, right, "─", "w");
-    drawTrack(g, lerp(DASH_RIGHT + 1, TRACK_RIGHT + 1, q), TRACK_RIGHT);
+    const flash = q < 0.2;
+    drawWord(g, WORD.length * LETTER_W, flash);
+    const lineColor = flash ? "hot" : "dash";
+    for (let c = LEFT_DASH_LEFT; c <= LEFT_DASH_RIGHT; c++) {
+      put(g, LINE_ROW, c, "─", lineColor);
+    }
+    for (let c = RIGHT_DASH_LEFT; c <= RIGHT_DASH_RIGHT; c++) {
+      put(g, LINE_ROW, c, "─", lineColor);
+    }
+    // The runner's last particles merge into the right-hand line.
+    for (let k = 0; k < 2; k++) {
+      const pos = Math.round(lerp(WORD_LEFT + WORD_W + 1, RIGHT_DASH_LEFT + 2, q));
+      const r = LINE_ROW - 1 + (k % 2);
+      if (g[r][pos][0] === " ") put(g, r, pos, "·", "spark");
+    }
     return g;
   }
 
   // 5. Settled final mark.
   drawWord(g, WORD.length * LETTER_W);
-  for (let c = DASH_LEFT; c <= DASH_RIGHT; c++) put(g, LINE_ROW, c, "─", "c");
+  for (let c = LEFT_DASH_LEFT; c <= LEFT_DASH_RIGHT; c++) {
+    put(g, LINE_ROW, c, "─", "dash");
+  }
+  for (let c = RIGHT_DASH_LEFT; c <= RIGHT_DASH_RIGHT; c++) {
+    put(g, LINE_ROW, c, "─", "dash");
+  }
   return g;
 }
 

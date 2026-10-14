@@ -30,6 +30,15 @@ FROZEN_DEFAULT_TOKEN_STYLES: dict[str, str] = {
     "border": "#334155",
     "link": "underline #67e8f9",
     "code": "#fde68a",
+    "logo.hot": "bold #f0f9ff",
+    "logo.track": "#334155",
+    "logo.runner": "bold #67e8f9",
+    "logo.letter-a": "#67e8f9",
+    "logo.letter-b": "#818cf8",
+    "logo.letter-c": "#c4b5fd",
+    "logo.dash": "#67e8f9",
+    "logo.spark": "#67e8f9",
+    "logo.ghost": "dim #94a3b8",
 }
 
 FROZEN_TOKENS: tuple[str, ...] = (
@@ -47,6 +56,15 @@ FROZEN_TOKENS: tuple[str, ...] = (
     "link",
     "code",
     "command",
+    "logo.hot",
+    "logo.track",
+    "logo.runner",
+    "logo.letter-a",
+    "logo.letter-b",
+    "logo.letter-c",
+    "logo.dash",
+    "logo.spark",
+    "logo.ghost",
 )
 
 FROZEN_DEFAULT_PT_STYLE: dict[str, str] = {
@@ -68,8 +86,8 @@ FROZEN_DEFAULT_PT_STYLE: dict[str, str] = {
 
 def test_tokens_catalog_completeness() -> None:
     assert TOKENS == FROZEN_TOKENS
-    assert len(TOKENS) == 14
-    assert len(set(TOKENS)) == 14
+    assert len(TOKENS) == 23
+    assert len(set(TOKENS)) == 23
     assert set(TOKENS) == set(DEFAULT_TOKEN_STYLES.keys())
 
 
