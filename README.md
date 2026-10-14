@@ -34,7 +34,7 @@ pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon
 xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 ```
 
-> **Windows 提示：** 如果提示 `'xenon' 不是内部或外部命令`，说明 Scripts 目录不在 PATH——pip 安装时通常会打印 `WARNING: The script xenon.exe is installed in '...' which is not on PATH`，按那个路径运行，或把它加进 PATH；也可以直接用 `python -m xenon`（v0.9.4+）。混用 conda 和独立 Python 时，建议用专用 venv：`python -m venv .venv`。
+> **Windows 提示：** 如果提示 `'xenon' 不是内部或外部命令`，说明 Scripts 目录不在 PATH——pip 安装时通常会打印 `WARNING: The script xenon.exe is installed in '...' which is not on PATH`，按那个路径运行，或把它加进 PATH；也可以直接用 `python -m xenon`（v0.9.3+）。混用 conda 和独立 Python 时，建议用专用 venv：`python -m venv .venv`。
 
 ## 它具体做什么
 

@@ -34,7 +34,7 @@ pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon
 xenon   # first run walks you through setup (API key, model, engine)
 ```
 
-> **Windows:** if you get `'xenon' is not recognized`, the Scripts directory is not on `PATH` — pip usually prints `WARNING: The script xenon.exe is installed in '...' which is not on PATH`; run that path, add it to `PATH`, or use `python -m xenon` (v0.9.4+). Mixing conda with a standalone Python? Use a dedicated venv: `python -m venv .venv`.
+> **Windows:** if you get `'xenon' is not recognized`, the Scripts directory is not on `PATH` — pip usually prints `WARNING: The script xenon.exe is installed in '...' which is not on PATH`; run that path, add it to `PATH`, or use `python -m xenon` (v0.9.3+). Mixing conda with a standalone Python? Use a dedicated venv: `python -m venv .venv`.
 
 ## What it actually does
 
