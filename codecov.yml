@@ -1,0 +1,21 @@
+# Codecov configuration for xianyu-sheng/Xenon.
+#
+# Thresholds mirror the repository's own gate: pyproject.toml sets
+# `fail_under = 70`, so the project status must not be stricter than the
+# CI it accompanies. Patch coverage asks for a higher bar on new code
+# without blocking drive-by contributions on a few uncovered lines.
+
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 2%
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+
+comment:
+  layout: "condensed"
+  require_changes: false

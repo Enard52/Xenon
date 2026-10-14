@@ -17,6 +17,10 @@
 
 - 新增 [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai) 收录（Agentic AI & Multi-Agent Systems → Autonomous Coding Agents）。
 
+### 工程基础设施
+
+- 接入 Codecov：新增 `codecov.yml`（project 目标 70%、patch 目标 80%，与 `pyproject.toml` 的 `fail_under=70` 对齐），README（中/英）增加覆盖率徽章。
+
 ## [0.9.3] — 2026-10-12
 
 ### 会话恢复体验
