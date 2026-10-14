@@ -41,6 +41,7 @@
    - 只写「本地跑过没问题」而不附命令与输出的 PR，评审会要求补齐证据后再审。
 
 5. 不要提交凭证、个人配置、构建产物或供应商真实响应。
+6. 文档中声明功能所属版本时，只写**已发布**的版本号：源码中的 `__version__` 始终等于最近一次发布的版本，不代表 `main` 上刚合并的功能已经发布。未发布的功能请写「下一版本」，不要写成当前版本号——这是曾经让两位贡献者白做工的坑。
 
 ---
 
@@ -92,3 +93,7 @@ expected vs. actual results, and sanitized logs or error messages.
      asked for evidence before review.
 5. Never commit credentials, personal configuration, build artifacts, or real
   vendor responses.
+6. When docs claim a feature belongs to a version, only cite **released**
+   versions: `__version__` always equals the latest release and does not mean
+   features merged into `main` have shipped. Write "next release" for
+   unreleased features instead of a concrete version number.

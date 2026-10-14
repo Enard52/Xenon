@@ -31,7 +31,7 @@
 
 ```bash
 # 30 秒安装（无需 PyPI）
-pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
 xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 ```
 
@@ -77,7 +77,7 @@ xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 
 ```bash
 # 方式一：从 GitHub Releases 安装 wheel（推荐）
-pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
 
 # 方式二：源码安装（editable，浅克隆省流量）
 git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git

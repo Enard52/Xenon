@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-10-14
+
 ### 品牌：跑者启动动画
 
 - 全新启动动画：中间拉线 → 像素跑者沿中线持续奔跑 → 身体粒子边跑边剥离（四肢先散、头部最后），在身后组装成方块 XENON 字样，中线被字母吸收、远端回缩，两侧各留一段对称签名线（`────── XENON ──────`），最后残余粒子汇入右侧线收尾；动画播完才进入欢迎界面。
@@ -13,15 +15,24 @@
 - 终端标签活动状态由星位 `✶··` 更新为方块 `█··`（ASCII 帧不变）；`xenon` 工作流面板标题同步。
 - README（中/英）嵌入启动动画 GIF。
 
-### 收录
+### 终端与主题
 
-- 新增 [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai) 收录（Agentic AI & Multi-Agent Systems → Autonomous Coding Agents）。
+- 新增 `python -m xenon` 入口（**本版起可用**）并补充 Windows PATH 排障文档；README 中 v0.9.4+ 的版本注记自本版起成立（v0.9.3 wheel 不包含该入口）。
+- `NO_COLOR` 现在同样作用于输入提示样式（#115）。
+- 新增语义 token 目录与默认调色板冻结测试（#117，`xenon/repl/theme.py`）。
 
-### 工程基础设施
+### 智能路由
 
+- 新增智能路由决策分析（#116）。
+- 从手动 `/mode` 覆盖学习范式偏好（#134）：同一任务签名下同一范式被手动选择 ≥3 次后，路由对其推荐 +0.1 置信度（封顶 1.0，不绕过既有检查）；偏好持久化到 `~/.xenon/routing_preferences.json`（0600；文件损坏或不可写时静默降级）。
+
+### 文档与基础设施
+
+- 修正 MCP SSE 状态为「简化实现」并引用 #103（#133）。
+- 新增观测层（AgentOps）P0 设计文档 `docs/OBSERVABILITY.md`（#131/#132）：span 模型、`xenon.trace/v1` schema、隐私 allow-list 与性能预算；P1–P4 待实现。
+- 收录 [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai)（Agentic AI & Multi-Agent Systems → Autonomous Coding Agents）。
 - 接入 Codecov：新增 `codecov.yml`（project 目标 70%、patch 目标 80%，与 `pyproject.toml` 的 `fail_under=70` 对齐），README（中/英）增加覆盖率徽章。
-
-## [0.9.3] — 2026-10-12
+- README 重写聚焦；新增 CODE_OF_CONDUCT；CONTRIBUTING 增加英文精简版、CI 证据要求与版本语义说明。
 
 ### 会话恢复体验
 

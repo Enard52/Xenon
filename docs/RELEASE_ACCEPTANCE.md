@@ -54,3 +54,12 @@ Release 记录至少包含：版本、提交、Python/OS、测试结果、构建
 - PyPI（如发布）中的版本与 `xenon.__version__` 一致；
 - README 安装命令能指向该版本；
 - 外部 Awesome List 或社区提交使用同一项目简介和仓库地址。
+
+### v0.9.4 — 2026-10-14
+
+- 发行提交：tag `v0.9.4`（指向本版 CHANGELOG/版本号提交）。
+- 门禁：CI main 全绿（Linux 全套离线 + 确定性 E2E + 三平台 smoke + package）；本地 `ruff check`、`compileall`、`python -m build`（wheel + sdist）与 `twine check` 通过。
+- 产物：`dist/xenon_harness-0.9.4-py3-none-any.whl`、`dist/xenon_harness-0.9.4.tar.gz`。
+- 已知限制：本机为 Windows，本地离线全量存在既有平台基线失败（symlink/编码等，见 #119），故以 CI Linux 全量结果为准；`python -m xenon` 自本版起在发布产物中可用。
+- 回滚：`pip install` 回退 v0.9.3 wheel（README 历史提交可查）；或 `git checkout v0.9.3`。
+- 真实供应商验收：本版未重跑，沿用 v0.9.3 记录。

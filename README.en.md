@@ -31,7 +31,7 @@ Other agents say "done" and you take their word for it. Xenon splits the result 
 
 ```bash
 # 30-second install (no PyPI required)
-pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
 xenon   # first run walks you through setup (API key, model, engine)
 ```
 
@@ -77,7 +77,7 @@ Semantic judgement lives in exactly one place (`xenon/turn/gate.py`); engines do
 
 ```bash
 # Option 1 — install the wheel from GitHub Releases (recommended)
-pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.3/xenon_harness-0.9.3-py3-none-any.whl
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
 
 # Option 2 — from source (editable; shallow clone saves bandwidth)
 git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
