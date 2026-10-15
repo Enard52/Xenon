@@ -20,7 +20,7 @@ xenon> /mcp add web http://localhost:3000/mcp
 xenon> /mcp list
 ```
 
-The HTTP URL above is merely a placeholder example; you must replace it with the actual POST JSON-RPC endpoint provided by your server. Currently, `SSETransport` does not yet implement MCP SSE `endpoint` discovery or streaming response ID correlation, nor does it represent full support for Streamable HTTP; do not directly provide a `/sse` address that only handles SSE handshakes. For details on configuration versus connection validation, see [MCP Transport Boundaries](INTEGRATIONS.md#mcp-transport-boundaries).
+The HTTP URL above is merely a placeholder example; you must replace it with the actual POST JSON-RPC endpoint provided by your server. Currently, `SSETransport` does not yet implement MCP SSE `endpoint` discovery or streaming response ID correlation, nor does it represent full support for Streamable HTTP; do not directly provide a `/sse` address that only handles SSE handshakes. For details on configuration versus connection validation, see [MCP Transport Boundaries](INTEGRATIONS.md#mcp-传输边界).
 
 Note: In the current REPL, `/mcp add` may still display "connected, 0 tools discovered" when initialization or tool discovery fails; this message should not be taken as proof of a successful handshake (see [#103](https://github.com/xianyu-sheng/Xenon/issues/103)).
 
