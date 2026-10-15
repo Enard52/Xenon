@@ -45,6 +45,17 @@
 5. 不要提交凭证、个人配置、构建产物或供应商真实响应。
 6. 文档中声明功能所属版本时，只写**已发布**的版本号：源码中的 `__version__` 始终等于最近一次发布的版本，不代表 `main` 上刚合并的功能已经发布。未发布的功能请写「下一版本」，不要写成当前版本号——这是曾经让两位贡献者白做工的坑。
 
+## 依赖升级策略 (Dependency Upgrade Policy)
+
+Xenon 使用 Dependabot 每周自动检查依赖更新（涵盖 `pip` 运行时依赖、`scripts/brand` npm 依赖以及 GitHub Actions），并通过分组合并减少 PR 噪声。
+
+### 合并前最小验证清单 (Pre-merge Checklist)
+Dependabot PR 严禁绕过 CI。合并前必须由维护者完成以下最小验证：
+1. **CI 必须全绿**：静态检查 (`ruff check`)、离线全量测试 (`pytest -m "not live"`) 必须全部跑绿通过；
+2. **不锁死精确版本**：保持运行时依赖下界原则（如 `package>=x.y.z`），不引入锁定精确版本的约束；
+3. **核心依赖回归验证**：若更新涉及核心库（如 `httpx`、`prompt-toolkit`、`tiktoken`、`rich` 等），需在审查时确认无废弃 API 或破坏性行为变化；
+4. **运行时代码纯净性**：不为单纯通过 Dependabot PR 而侵入性改动核心运行时代码。
+
 ---
 
 # Contributing (English)
@@ -101,3 +112,15 @@ expected vs. actual results, and sanitized logs or error messages.
    versions: `__version__` always equals the latest release and does not mean
    features merged into `main` have shipped. Write "next release" for
    unreleased features instead of a concrete version number.
+
+## Dependency Upgrade Policy
+
+Xenon uses Dependabot to automatically check for dependency updates weekly across `pip` runtime dependencies, `scripts/brand` npm dependencies, and GitHub Actions workflows, grouping minor and patch updates to minimize PR noise.
+
+### Pre-merge Checklist
+Dependabot PRs must never bypass CI. Maintainers must verify the following before merging:
+1. **All CI checks must pass**: Static analysis (`ruff check`) and offline tests (`pytest -m "not live"`) must be green.
+2. **Preserve lower-bound policy**: Do not lock exact pinned versions; preserve lower-bound version specifications (e.g. `package>=x.y.z`).
+3. **Core dependency regression review**: For critical dependencies (such as `httpx`, `prompt-toolkit`, `tiktoken`, `rich`), verify there are no breaking changes or deprecated API usages.
+4. **Runtime code purity**: Do not alter runtime behavior or hack core logic solely to satisfy an automated bump.
+
