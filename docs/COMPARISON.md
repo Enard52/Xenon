@@ -1,5 +1,7 @@
 # Xenon vs Aider / Claude Code / OpenCode / Crush
 
+> 中文 | [English](COMPARISON.en.md)
+
 > 这是一份**实事求是**的能力对位表。✅ = 有，⚠️ = 部分 / 有限，❌ = 没有，— = 不适用。
 > 评测时间 2026-07-08；Xenon 侧能力已按 v0.9.2 现状更新（2026-10-12）。
 > 注意：闭源竞品（Claude Code / Crush）的内部实现不可观测，其 ❌ 应读作
