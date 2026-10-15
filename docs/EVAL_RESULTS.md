@@ -286,3 +286,17 @@ python evals/runner.py \
 
 > 4/7 只是官方 harness 接入验证，不是成绩。本节跑完后，第一个可引用数字是
 > 「SWE-bench Lite 30 例子集（seed 20260729）」，且必须与本节字段一起引用。
+
+### 9.5 启动记录（2026-10-15）
+
+- **harness 端到端复验通过**：`astropy__astropy-12907` × `react` × 120 步 ×
+  `deepseek-v4-flash`（官方 API，`--reasoning-effort off`）。
+  - agent 侧：37s / 14 次迭代 / 13 次工具调用 / 提取到 504 字节补丁（`apply_success=true`）
+  - 官方判定：**resolved 1，unresolved 0，empty_patch 0，errors 0**（118s）
+  - 产物：`D:\swebench\runs\revalidation-astropy\`（predictions / traces / events / reports）
+  - 说明：该实例同时在 30 例清单内，主运行会以同一冻结配置重跑并计入正式结果。
+- 运行环境：WSL 3.0.3 + Ubuntu 24.04.2 + Docker Engine（containerd snapshotter，
+  `docker.m.daocloud.io`→`docker.1panel.live` 加速）；Docker 数据随发行版 vhdx 落在
+  `D:\wsl\Ubuntu\ext4.vhdx`；数据集走 `hf-mirror.com` 并启用 `HF_HUB_OFFLINE=1` 离线加载。
+- 主运行与官方判定已排队自动执行（systemd：`swebench-pull` → `swebench-run` →
+  `swebench-grade`），原始产物统一保存于 `D:\swebench\runs\main-30-70c6d79\`。
