@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" role="img" aria-label="Xenon terminal: what the machine confirmed, and the two items it could not verify">
+  <title>xenon — evidence chain</title>
+  <defs>
+    <style>
+      .mono { font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, "Noto Sans Mono CJK SC", "Microsoft YaHei", monospace; font-weight: 500; }
+    </style>
+    <linearGradient id="ttl" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="55%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="879" height="319" rx="10" ry="10" fill="#0a0c10" stroke="#1e2436"/>
+
+  <rect x="0.5" y="0.5" width="879" height="34" rx="10" ry="10" fill="#11141a"/>
+  <rect x="0.5" y="24" width="879" height="11" fill="#11141a"/>
+  <line x1="0.5" y1="34.5" x2="879.5" y2="34.5" stroke="#1e2436"/>
+
+  <circle cx="22" cy="17.5" r="6" fill="#ff8b81"/>
+  <circle cx="42" cy="17.5" r="6" fill="#f0b07d"/>
+  <circle cx="62" cy="17.5" r="6" fill="#7ee787"/>
+  <text x="440" y="22" text-anchor="middle" class="mono" font-size="12" fill="url(#ttl)">xenon — evidence chain</text>
+
+  <g class="mono" font-size="14" xml:space="preserve">
+    <text x="28" y="78"><tspan fill="#67e8f9">❯ </tspan><tspan fill="#e6edf3">fix the default timeout in config.py</tspan></text>
+    <text x="28" y="105"><tspan fill="#8b949e"></tspan></text>
+    <text x="28" y="132"><tspan fill="#67e8f9">  ▸ </tspan><tspan fill="#e6edf3">edit_file</tspan><tspan fill="#8b949e">  config.py</tspan><tspan fill="#56d364">                     ✓</tspan></text>
+    <text x="28" y="159"><tspan fill="#67e8f9">  ▸ </tspan><tspan fill="#e6edf3">run</tspan><tspan fill="#8b949e">        pytest</tspan><tspan fill="#f85149">                        ✗ 2 failed</tspan></text>
+    <text x="28" y="186"><tspan fill="#e3b341">  ▸ </tspan><tspan fill="#e6edf3">delivered (degraded)</tspan><tspan fill="#8b949e"> — 2 items the machine could not verify:</tspan></text>
+    <text x="28" y="213"><tspan fill="#8b949e">       · </tspan><tspan fill="#8b949e">"updated every call site" (only 1 of 3 references confirmed)</tspan></text>
+    <text x="28" y="240"><tspan fill="#8b949e">       · </tspan><tspan fill="#8b949e">integration tests were not run</tspan></text>
+    <text x="28" y="267"><tspan fill="#c4b5fd">  ▸ </tspan><tspan fill="#e6edf3">evidence chain</tspan><tspan fill="#8b949e">: 41 events, intact and continuous · </tspan><tspan fill="#67e8f9">/evidence</tspan><tspan fill="#8b949e"> replays it</tspan></text>
+  </g>
+</svg>

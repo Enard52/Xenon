@@ -3,31 +3,33 @@
 [![CI](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml/badge.svg)](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/xianyu-sheng/Xenon/branch/main/graph/badge.svg)](https://codecov.io/gh/xianyu-sheng/Xenon)
 [![Release](https://img.shields.io/github/v/release/xianyu-sheng/Xenon)](https://github.com/xianyu-sheng/Xenon/releases)
+[![GitHub stars](https://img.shields.io/github/stars/xianyu-sheng/Xenon?logo=github)](https://github.com/xianyu-sheng/Xenon/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
-[English](README.en.md) | 简体中文
-
 <p align="center">
-  <img src="docs/logo-animated.gif" alt="Xenon — 像素跑者沿中线奔跑，逐渐消散重组为方块 XENON 标识" width="666">
+  <img src="docs/logo-animated.gif" alt="Xenon — 像素跑者沿中线奔跑，逐渐消散重组为方块 XENON 标识" width="440">
 </p>
 
-**一个把"机器到底验证了什么"摊开给你看的终端 AI 编码代理。**
+<h3 align="center">把"机器到底验证了什么"摊开给你看的终端 AI 编码代理</h3>
 
-别的 agent 说"完成了"，你只能选择相信它。Xenon 会把结果拆成两半说清楚：哪些是机器确认过的，哪些需要你自己看一眼。
+<p align="center">别的 agent 说"完成了"，你只能选择相信它。<br/>Xenon 把结果拆成两半说清楚：哪些是机器确认过的，哪些需要你自己看一眼。</p>
 
-```text
-❯ 修复 config.py 里的超时默认值
+<p align="center">
+  <a href="docs/OPERATION_GUIDE.md">文档</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="CHANGELOG.md">更新日志</a> ·
+  <a href="https://github.com/xianyu-sheng/Xenon/issues">问题反馈</a> ·
+  <a href="https://github.com/xianyu-sheng/Xenon/releases">Releases</a> ·
+  <a href="README.en.md">English</a>
+</p>
 
-  🔧 edit_file  config.py                     ✓
-  🔧 run        pytest                        ✗ 2 failed
-  🏁 交付（降级）— 以下 2 项机器无法核实，请人工确认：
-     · "已覆盖所有调用点"（实际只确认 1/3 处引用）
-     · 未运行集成测试
-  🧾 证据链：41 条事件，完整连续 · /evidence 可随时复核
-```
+> [!TIP]
+> **机器只对过程负责，语义判断交还给你。** 每次工具调用都进证据链（L0）；全仓只有一个阻断类校验（L1）；语义问题不阻断交付，整理成「待人工核验清单」随答案一起交给你（L2）。
 
-<sub>简化示意；真实界面会展示每次工具调用的完整记录。</sub>
+<p align="center">
+  <img src="docs/hero-terminal.svg" alt="Xenon 终端：一次交付里机器确认了什么、哪两项需要人工核验" width="860">
+</p>
 
 ## 快速开始
 
@@ -44,13 +46,15 @@ xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 
 ## 它具体做什么
 
-- **每一次工具调用都进证据链。** 会话事件写入 append-only 哈希链，每条带内容哈希与前驱哈希；`/evidence` 随时重算自证，能发现损坏、单点篡改和重排。
-- **只有一个阻断类校验。** "空洞回答"（没干活、答非所问）是确定性的，命中就同回合反馈重试、同因熔断；语义类问题不阻断交付，而是整理成随答案输出的「待人工核验清单」。
-- **每个回合是一棵树上的节点。** `/rewind` 回退、`/fork` 分叉；中断或熔断后，裸敲"继续"会自动从那个节点接上，不用重述上下文。
-- **越权操作要走审批。** 工作区内写文件不打扰你；越界写和命令会弹统一面板（带 diff 预览），授权可以按目标和时长限定，子代理默认只读。
-- **工具输出带来源标记，注入模式有非阻断告警。** 文件、网页、GitHub、MCP 与命令输出都会标注来源与可信度；命中常见提示注入模式时给出可见警告，审批面板会注明"该动作可能受不可信内容影响"。检测只提醒、不阻断，也不改写原内容——范围与限制见[工具输出威胁模型](docs/THREAT_MODEL.md)。
-- **路由会从你的手动选择中学习。** 智能路由的推荐被 `/mode` 覆盖后，同类任务下偏好范式会获得小幅置信度加权；偏好只留在本地，删除 `~/.xenon/routing_preferences.json` 即可重置。
-- **大文件截断、上下文超限都如实标注，** 不伪装完整。
+<table>
+<tr><td><b>证据链，而不是日志</b></td><td>每一次工具调用写入 append-only 哈希链（内容哈希 + 前驱哈希）；<code>/evidence</code> 随时重算自证，能发现损坏、单点篡改与重排。</td></tr>
+<tr><td><b>只有一个阻断类校验</b></td><td>"空洞回答"（没干活、答非所问）是确定性的，命中就同回合反馈重试、同因熔断；语义类问题不阻断交付，整理成「待人工核验清单」随答案输出。</td></tr>
+<tr><td><b>每个回合是一棵树上的节点</b></td><td><code>/rewind</code> 回退、<code>/fork</code> 分叉；中断或熔断后，裸敲"继续"会自动从那个节点接上，不用重述上下文。</td></tr>
+<tr><td><b>越权操作要走审批</b></td><td>工作区内写文件不打扰你；越界写和命令会弹统一面板（带 diff 预览），授权可按目标与时长限定，子代理默认只读。</td></tr>
+<tr><td><b>不可信输出带来源标记</b></td><td>文件、网页、GitHub、MCP 与命令输出都标注来源与可信度；命中常见提示注入模式时给出可见告警，审批面板注明"该动作可能受不可信内容影响"。只提醒，不阻断，也不改写原内容。</td></tr>
+<tr><td><b>路由会从你的选择中学习</b></td><td>智能路由的推荐被 <code>/mode</code> 覆盖后，同类任务下偏好范式获得小幅置信度加权；偏好只留在本地，删 <code>~/.xenon/routing_preferences.json</code> 即重置。</td></tr>
+<tr><td><b>截断与上限如实标注</b></td><td>大文件截断、上下文超限都明确标出来，不伪装完整。</td></tr>
+</table>
 
 ## 一个回合怎么走
 
@@ -125,6 +129,9 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 
 ## 环境变量
 
+<details>
+<summary>共 13 项（点击展开）</summary>
+
 | 变量 | 作用 | 默认 |
 |---|---|---|
 | `XENON_APPROVAL_TTL` | 会话级 `a` 授权规则的有效期（秒） | 1800 |
@@ -140,6 +147,8 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 | `XENON_SESSION_EVENTS(_DIR)` | 事件日志开关 / 目录 | 开 |
 | `XENON_HOOKS` | 本地 hooks 开关 | 开 |
 | `GITHUB_TOKEN` / `GH_TOKEN` | GitHub 工具认证（提升 API 限额） | 空 |
+
+</details>
 
 ## 平台支持
 

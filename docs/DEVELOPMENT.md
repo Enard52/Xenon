@@ -110,6 +110,7 @@ The render pipeline writes:
 - `docs/logo.svg` — Scalable vector logo.
 - `docs/logo.png` — High-resolution static image.
 - `docs/logo-animated.gif` — Animated runner sequence (embedded in the README).
+- `docs/hero-terminal.svg` / `docs/hero-terminal.en.svg` — README hero terminals (zh/en).
 
 `docs/demo.gif` is a hand-recorded terminal demo and is **not** produced by this pipeline.
 

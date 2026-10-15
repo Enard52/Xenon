@@ -3,31 +3,33 @@
 [![CI](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml/badge.svg)](https://github.com/xianyu-sheng/Xenon/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/xianyu-sheng/Xenon/branch/main/graph/badge.svg)](https://codecov.io/gh/xianyu-sheng/Xenon)
 [![Release](https://img.shields.io/github/v/release/xianyu-sheng/Xenon)](https://github.com/xianyu-sheng/Xenon/releases)
+[![GitHub stars](https://img.shields.io/github/stars/xianyu-sheng/Xenon?logo=github)](https://github.com/xianyu-sheng/Xenon/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
-[English](README.en.md) | [简体中文](README.md)
-
 <p align="center">
-  <img src="docs/logo-animated.gif" alt="Xenon — a pixel runner sprints along the middle line and dissolves into the blocky XENON wordmark" width="666">
+  <img src="docs/logo-animated.gif" alt="Xenon — a pixel runner sprints along the middle line and dissolves into the blocky XENON wordmark" width="440">
 </p>
 
-**A terminal AI coding agent that shows you exactly how much was actually verified.**
+<h3 align="center">A terminal AI coding agent that shows you exactly how much was actually verified</h3>
 
-Other agents say "done" and you take their word for it. Xenon splits the result in two: what the machine confirmed, and what you should check yourself.
+<p align="center">Other agents say "done" and you take their word for it.<br/>Xenon splits the result in two: what the machine confirmed, and what you should check yourself.</p>
 
-```text
-❯ fix the default timeout in config.py
+<p align="center">
+  <a href="docs/GUIDE.md">Docs</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="https://github.com/xianyu-sheng/Xenon/issues">Issues</a> ·
+  <a href="https://github.com/xianyu-sheng/Xenon/releases">Releases</a> ·
+  <a href="README.md">简体中文</a>
+</p>
 
-  🔧 edit_file  config.py                     ✓
-  🔧 run        pytest                        ✗ 2 failed
-  🏁 delivered (degraded) — 2 items the machine could not verify:
-     · "updated every call site" (only 1 of 3 references confirmed)
-     · integration tests were not run
-  🧾 evidence chain: 41 events, intact and continuous · /evidence replays it
-```
+> [!TIP]
+> **The machine owns the process; semantic judgement stays with you.** Every tool call goes into the evidence chain (L0); the repository has exactly one blocking check (L1); semantic doubts never block delivery — they ship as a manual-verification checklist next to the answer (L2).
 
-<sub>Simplified illustration; the real UI shows the full record of every tool call.</sub>
+<p align="center">
+  <img src="docs/hero-terminal.en.svg" alt="Xenon terminal: what the machine confirmed in one delivery, and the two items it could not verify" width="860">
+</p>
 
 ## Quick start
 
@@ -44,13 +46,15 @@ More install options (source / uv / pipx) are in [Install](#install).
 
 ## What it actually does
 
-- **Every tool call goes into an evidence chain.** Session events are written to an append-only hash chain (content hash + predecessor hash); `/evidence` recomputes and self-checks it at any time, catching corruption, single-point tampering and reordering.
-- **Exactly one blocking check.** "Hollow answers" (no work done, non-answers) are deterministic — caught, fed back for a retry, and fused if the same cause repeats. Semantic doubts never block delivery; they ship as a manual-verification checklist next to the answer.
-- **Every turn is a node in a tree.** `/rewind` goes back, `/fork` branches; after an interruption or fuse, typing "continue" resumes from that node without re-explaining context.
-- **Boundary actions ask first.** In-workspace writes don't interrupt you; out-of-boundary writes and commands open a unified panel with a diff preview, and approvals can be scoped by target and TTL. Subagents are read-only by default.
-- **Tool output carries provenance, and injection patterns get a non-blocking warning.** File, web, GitHub, MCP and command output is tagged with its source and trust level; common prompt-injection patterns produce a visible warning, and the approval panel notes when an action may be driven by untrusted content. Detection only warns — it never blocks or rewrites content. Scope and limitations: [tool-output threat model](docs/THREAT_MODEL.md).
-- **Routing learns from your manual choices.** When you override the auto-router with `/mode`, the preferred paradigm gets a small confidence boost for similar tasks; preferences stay local — delete `~/.xenon/routing_preferences.json` to reset them.
-- **Truncation and context limits are labeled honestly** instead of being papered over.
+<table>
+<tr><td><b>An evidence chain, not just logs</b></td><td>Every tool call is written to an append-only hash chain (content hash + predecessor hash); <code>/evidence</code> recomputes and self-checks it at any time, catching corruption, single-point tampering and reordering.</td></tr>
+<tr><td><b>Exactly one blocking check</b></td><td>"Hollow answers" (no work done, non-answers) are deterministic — caught, fed back for a retry, and fused if the same cause repeats. Semantic doubts never block delivery; they ship as a manual-verification checklist next to the answer.</td></tr>
+<tr><td><b>Every turn is a node in a tree</b></td><td><code>/rewind</code> goes back, <code>/fork</code> branches; after an interruption or fuse, typing "continue" resumes from that node without re-explaining context.</td></tr>
+<tr><td><b>Boundary actions ask first</b></td><td>In-workspace writes don't interrupt you; out-of-boundary writes and commands open a unified panel with a diff preview, and approvals can be scoped by target and TTL. Subagents are read-only by default.</td></tr>
+<tr><td><b>Untrusted output is tagged</b></td><td>File, web, GitHub, MCP and command output is tagged with its source and trust level; common prompt-injection patterns produce a visible warning, and the approval panel notes when an action may be driven by untrusted content. It only warns — nothing is blocked or rewritten.</td></tr>
+<tr><td><b>Routing learns from your choices</b></td><td>When you override the auto-router with <code>/mode</code>, the preferred paradigm gets a small confidence boost for similar tasks; preferences stay local — delete <code>~/.xenon/routing_preferences.json</code> to reset them.</td></tr>
+<tr><td><b>Limits are labeled honestly</b></td><td>Truncated files and exhausted context are marked as such instead of being papered over.</td></tr>
+</table>
 
 ## How a turn runs
 
@@ -125,6 +129,9 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 
 ## Environment variables
 
+<details>
+<summary>13 variables (click to expand)</summary>
+
 | Variable | Purpose | Default |
 |---|---|---|
 | `XENON_APPROVAL_TTL` | TTL for session-level `a` approval rules (seconds) | 1800 |
@@ -140,6 +147,8 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 | `XENON_SESSION_EVENTS(_DIR)` | Event log toggle / directory | on |
 | `XENON_HOOKS` | Local hooks toggle | on |
 | `GITHUB_TOKEN` / `GH_TOKEN` | GitHub tool auth (raises API limits) | empty |
+
+</details>
 
 ## Platform support
 

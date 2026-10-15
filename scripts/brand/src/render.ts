@@ -13,6 +13,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import gifenc from "gifenc";
+import { emitHeroSvgs } from "./hero.ts";
 
 const { GIFEncoder, applyPalette, quantize } = gifenc;
 import { PNG } from "pngjs";
@@ -302,6 +303,7 @@ function main(): void {
   emitSvg(mark);
   emitPng(mark);
   emitGif(frames);
+  emitHeroSvgs(ROOT);
 
   // ASCII preview of key frames for a quick visual check.
   console.log("\n--- preview (key frames) ---");
