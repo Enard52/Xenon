@@ -246,14 +246,14 @@ python evals/runner.py \
 |---|---|
 | 数据集 | `SWE-bench/SWE-bench_Lite`，`split=test` |
 | 抽样 | `evals/swebench_select.py --size 30 --seed 20260729`（repo 分层 + 最大余数配额 + 分层内 seeded sample） |
-| 选择清单 | 启动前生成 manifest（含 digest）并**在出结果前公布** instance_id 列表 |
+| 选择清单 | `evals/manifests/swebench-lite-30-seed20260729.json`（digest `efc755a153a340094db95b176f0ad88881d65006e9f831f3e955710f7b823630`；30 例列表已随仓库公布） |
 | 主引擎 | `react`（唯一用于主结果的引擎） |
 | 引擎消融 | `evals/swebench_select.py --calibration-size N` 的 calibration subset，小 N；**不与主结果合并报分** |
 | 步数预算 | **120 步冻结**（`STANDARD_STEP_BUDGET`，`tests/test_step_budget.py` 锁定）；运行命令显式带 `--max-steps 120` |
 | 其他预算 | `XENON_MAX_TOKENS=8192`、`XENON_VERIFY_RETRIES=2`、gate fuse 阈值 2、provider 重试单次（评测模式） |
-| 模型 | `deepseek-v4-flash`（主结果）；网关与模型快照 ID：启动前填写 |
-| 代码版本 | 启动前填写 commit SHA |
-| 运行环境 | 官方 instance image digest、harness 版本、Python/Docker/宿主：启动前填写 |
+| 模型 | `deepseek-v4-flash` via 官方 API（`https://api.deepseek.com/v1`）；主结果用 `--reasoning-effort off`（官方 API 默认思考模式会耗尽 max_tokens 导致截断）；响应中的 system_fingerprint 记入 trace |
+| 代码版本 | `70c6d79`；评测源码树 = `git archive 70c6d79` 解包到 Linux 文件系统的独立副本 |
+| 运行环境 | Ubuntu 24.04.2 LTS（WSL2 + systemd）；Docker Engine（Ubuntu `docker.io`，overlayfs）容器层存于 `D:\wsl\Ubuntu\ext4.vhdx`；镜像加速 `docker.m.daocloud.io`；Python 3.12；`swebench==4.1.0`；官方 instance image digest 记入 pull 报告 |
 | 超时 | `--request-timeout 60`、`--engine-timeout 900`、`--prepare-timeout 1800`（如调整，在此登记） |
 
 ### 9.2 判定与排除规则（预注册）
