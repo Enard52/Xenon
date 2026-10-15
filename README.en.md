@@ -138,7 +138,7 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 | `XENON_VERIFY_RETRIES` | Same-turn retries after a structural failure | 2 |
 | `XENON_RETRY_BUDGET_MIN/MAX` | Step-budget clamp for retry turns | 10 / 40 |
 | `XENON_GATE_FUSE_THRESHOLD` | Same-cause structural failure fuse threshold | 2 |
-| `XENON_MAX_ITERATIONS` | Steps per run | 40 |
+| `XENON_MAX_ITERATIONS` | Steps per run (all engines, uniformly 120) | 120 |
 | `XENON_MAX_TOKENS` | Output cap per model call | 8192 |
 | `XENON_MAX_CONTINUATIONS` | Auto-continuations after truncation | 3 |
 | `NO_COLOR` | Standard flag; disables color in output and prompt | unset |

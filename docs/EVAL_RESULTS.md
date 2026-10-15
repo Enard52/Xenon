@@ -232,3 +232,57 @@ python evals/runner.py \
 - 评分函数 `_score` **未动**（用户明确要求不硬编码）
 - `expected_tools` 列表**未动**（任务定义本身合理）
 - 通用机制改进，**不**针对特定任务加白名单
+
+---
+
+## 九、SWE-bench 30 例分层抽样 — 预注册（待启动）
+
+> 本节在开跑前冻结协议；结果出来后的任何解释都以本节字段为准。
+> 标注「启动前填写」的字段须在第一次正式运行前补全并提交，之后不得再改。
+
+### 9.1 冻结字段
+
+| 字段 | 值 |
+|---|---|
+| 数据集 | `SWE-bench/SWE-bench_Lite`，`split=test` |
+| 抽样 | `evals/swebench_select.py --size 30 --seed 20260729`（repo 分层 + 最大余数配额 + 分层内 seeded sample） |
+| 选择清单 | 启动前生成 manifest（含 digest）并**在出结果前公布** instance_id 列表 |
+| 主引擎 | `react`（唯一用于主结果的引擎） |
+| 引擎消融 | `evals/swebench_select.py --calibration-size N` 的 calibration subset，小 N；**不与主结果合并报分** |
+| 步数预算 | **120 步冻结**（`STANDARD_STEP_BUDGET`，`tests/test_step_budget.py` 锁定）；运行命令显式带 `--max-steps 120` |
+| 其他预算 | `XENON_MAX_TOKENS=8192`、`XENON_VERIFY_RETRIES=2`、gate fuse 阈值 2、provider 重试单次（评测模式） |
+| 模型 | `deepseek-v4-flash`（主结果）；网关与模型快照 ID：启动前填写 |
+| 代码版本 | 启动前填写 commit SHA |
+| 运行环境 | 官方 instance image digest、harness 版本、Python/Docker/宿主：启动前填写 |
+| 超时 | `--request-timeout 60`、`--engine-timeout 900`、`--prepare-timeout 1800`（如调整，在此登记） |
+
+### 9.2 判定与排除规则（预注册）
+
+- 判定只认官方 `python -m swebench.harness.run_evaluation` 的 `resolved`；
+- `empty_patch` 单独计数，**不得**并入 `resolved=false`，`0/0` 不得报告为成功率；
+- **infra 排除**仅限：官方 image 拉取失败、harness 自身崩溃、宿主机资源耗尽——排除必须附原始日志并公开实例 ID；
+- 模型侧失败（超时、429、工具拦截、预算触顶）**不排除**，计入 resolved=false 并单列原因；
+- 报告两个数：`raw resolved`（分母 30）与 `resolved（剔除 infra 后）`。
+
+### 9.3 报告模板
+
+| instance_id | repo | resolved | empty_patch | steps | tokens(hit/miss/out) | 成本 | wall time | 失败原因 |
+|---|---|---|---|---|---|---|---|---|
+
+另附汇总：总成本、p50/p90 步数、缓存命中率、gate 触发次数（含"降级交付但 patch 有效"的比例）。
+
+### 9.4 预算包络（deepseek-v4-flash，单价见 `xenon/utils/deepseek_cache.py`，核对日期 2026-07-21）
+
+假设：输入约 25k tokens/步、缓存命中率约 85%、输出约 800 tokens/步。
+
+| 场景 | 单例 | 30 例 |
+|---|---:|---:|
+| 典型（中位 ~30–40 步） | ≈ ¥0.23 | ≈ ¥7 |
+| 保守（均值 ~60 步） | ≈ ¥0.35 | ≈ ¥11 |
+| 硬上限（全部打满 120 步，上下文更大） | ≈ ¥0.9 | ≈ ¥27 |
+| 理论极端（bonus 3× 封顶 360 步，deadline 通常先触发） | ≈ ¥2.7 | ≈ ¥80 |
+
+程序级（1 例复验 + 5 例热身 + 主 30 例 + 6×7 引擎消融）建议：**硬上限 ¥100，预期 ¥20–35**。
+
+> 4/7 只是官方 harness 接入验证，不是成绩。本节跑完后，第一个可引用数字是
+> 「SWE-bench Lite 30 例子集（seed 20260729）」，且必须与本节字段一起引用。

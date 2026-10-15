@@ -1,14 +1,44 @@
-"""步数预算：XENON_MAX_ITERATIONS 可调 + 触顶诚实标注。"""
+"""步数预算：XENON_MAX_ITERATIONS 可调 + 触顶诚实标注 + 标准 120 步冻结。"""
 
 from __future__ import annotations
 
-from xenon.engine.builtin_engines import _make_plan_react, _make_react, _step_budget
+from xenon.engine.builtin_engines import (
+    STANDARD_STEP_BUDGET,
+    _make_plan_execute,
+    _make_plan_react,
+    _make_plan_reflection,
+    _make_react,
+    _make_react_reflection,
+    _step_budget,
+)
 from xenon.engine.react_engine import ReActEngine
+
+
+def test_standard_step_budget_is_120():
+    """与 Claude Code 类代理对齐的固定值（评测冻结依赖它，不得随手改动）。"""
+
+    assert STANDARD_STEP_BUDGET == 120
+
+
+def test_all_step_based_factories_default_to_standard_budget(monkeypatch):
+    """react / plan-execute / plan-react / plan-reflection / react-reflection 全部默认 120。"""
+
+    monkeypatch.delenv("XENON_MAX_ITERATIONS", raising=False)
+    kwargs = dict(
+        model_priority=["m1"], model_pool=None, auto_router=None, callback=None
+    )
+    assert _make_react(**kwargs).max_iterations == 120
+    assert _make_plan_execute(**kwargs).max_steps == 120
+    plan_react = _make_plan_react(**kwargs)
+    assert plan_react.max_steps == 120
+    assert plan_react.reactor.max_iterations == 120
+    assert _make_plan_reflection(**kwargs).max_steps == 120
+    assert _make_react_reflection(**kwargs).reactor.max_iterations == 120
 
 
 def test_step_budget_default_and_env(monkeypatch):
     monkeypatch.delenv("XENON_MAX_ITERATIONS", raising=False)
-    assert _step_budget(40) == 40
+    assert _step_budget(STANDARD_STEP_BUDGET) == 120
     assert _step_budget(24) == 24
 
     monkeypatch.setenv("XENON_MAX_ITERATIONS", "120")

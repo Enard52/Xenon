@@ -13,9 +13,16 @@ from typing import Any
 
 from xenon.engine.registry import register_engine
 
+# ── 标准步数预算 ────────────────────────────────────────
+# 所有 step-based 引擎的统一默认值：与 Claude Code 类代理对齐的 120 步。
+# `XENON_MAX_ITERATIONS` 仍是唯一的显式覆盖手段；评测运行冻结在 120
+# （见 docs/EVAL_RESULTS.md 的 30 例预注册）。组合引擎会嵌套「外层计划步骤 +
+# 内层 ReAct」，两层各自以 120 为上限，实际运行由绝对 deadline 兜底。
+STANDARD_STEP_BUDGET = 120
+
 
 def _step_budget(default: int) -> int:
-    """单次运行的步数上限：`XENON_MAX_ITERATIONS` 可调，默认不变。"""
+    """单个循环的步数上限：`XENON_MAX_ITERATIONS` 可调，否则用传入的标准预算。"""
 
     import os
 
@@ -37,16 +44,16 @@ def _step_budget(default: int) -> int:
 def _make_react(**kwargs: Any) -> Any:
     from xenon.engine.react_engine import ReActEngine
 
-    # 普通对话任务可能涉及若干次「读 / 改 / 验证」循环。保留引擎自身的单次运行
-    # 上限，同时给交互路径留出中等长度任务的空间；协议重试与压缩仍受
-    # BudgetManager 的 2× 上限约束。
-    return ReActEngine(max_iterations=_step_budget(40), **kwargs)
+    # 标准步数预算（120）：覆盖「读 → 改 → 验证 → 失败反馈 → 再改」的长循环；
+    # 协议重试与压缩的额外轮次仍受 BudgetManager 的 3× 封顶约束，触顶由
+    # `_mark_budget_exhausted` 诚实标注。
+    return ReActEngine(max_iterations=_step_budget(STANDARD_STEP_BUDGET), **kwargs)
 
 
 def _make_plan_execute(**kwargs: Any) -> Any:
     from xenon.engine.plan_execute_engine import PlanExecuteEngine
 
-    return PlanExecuteEngine(max_steps=_step_budget(40), **kwargs)
+    return PlanExecuteEngine(max_steps=_step_budget(STANDARD_STEP_BUDGET), **kwargs)
 
 
 def _make_reflection(**kwargs: Any) -> Any:
@@ -59,21 +66,23 @@ def _make_plan_react(**kwargs: Any) -> Any:
     from xenon.engine.combined_engines import PlanReactEngine
 
     return PlanReactEngine(
-        max_steps=_step_budget(24), react_iterations=_step_budget(24), **kwargs
+        max_steps=_step_budget(STANDARD_STEP_BUDGET),
+        react_iterations=_step_budget(STANDARD_STEP_BUDGET),
+        **kwargs,
     )
 
 
 def _make_plan_reflection(**kwargs: Any) -> Any:
     from xenon.engine.combined_engines import PlanReflectionEngine
 
-    return PlanReflectionEngine(max_steps=_step_budget(24), review_rounds=2, **kwargs)
+    return PlanReflectionEngine(max_steps=_step_budget(STANDARD_STEP_BUDGET), review_rounds=2, **kwargs)
 
 
 def _make_react_reflection(**kwargs: Any) -> Any:
     from xenon.engine.combined_engines import ReactReflectionEngine
 
     return ReactReflectionEngine(
-        react_iterations=_step_budget(24), review_rounds=2, **kwargs
+        react_iterations=_step_budget(STANDARD_STEP_BUDGET), review_rounds=2, **kwargs
     )
 
 

@@ -144,7 +144,7 @@ class ReActEngine(BaseEngine):
         self,
         model_priority: list[str],
         *,
-        max_iterations: int = 40,
+        max_iterations: int = 120,
         system_prompt: str | None = None,
         tools: dict[str, dict] | None = None,
         callback: EngineCallback | None = None,

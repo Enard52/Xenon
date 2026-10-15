@@ -138,7 +138,7 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 | `XENON_VERIFY_RETRIES` | 结构层失败后的同回合重试次数 | 2 |
 | `XENON_RETRY_BUDGET_MIN/MAX` | 重试轮的步数预算区间 | 10 / 40 |
 | `XENON_GATE_FUSE_THRESHOLD` | 同因结构失败的熔断阈值 | 2 |
-| `XENON_MAX_ITERATIONS` | 单次运行的步数上限 | 40 |
+| `XENON_MAX_ITERATIONS` | 单次运行的步数上限（所有引擎统一 120） | 120 |
 | `XENON_MAX_TOKENS` | 单次模型调用的输出上限 | 8192 |
 | `XENON_MAX_CONTINUATIONS` | 截断后的自动续写次数 | 3 |
 | `NO_COLOR` | 标准环境变量；关闭输出与输入提示的颜色 | 未设置 |

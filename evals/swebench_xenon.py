@@ -28,6 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from datasets import load_dataset  # noqa: E402
 
+from xenon.engine.builtin_engines import STANDARD_STEP_BUDGET  # noqa: E402
 from xenon.engine.callbacks import EngineCallback  # noqa: E402
 from xenon.engine.combined_engines import (  # noqa: E402
     PlanReactEngine,
@@ -135,18 +136,19 @@ def _engine(
             models, max_steps=max_steps, max_mini_react_rounds=3, **common
         )
     elif name == "reflection":
-        engine = ReflectionEngine(models, max_rounds=max_steps, **common)
+        # 次级循环对齐生产默认：主循环步数 120 不应把审查轮次也拉到 120。
+        engine = ReflectionEngine(models, max_rounds=min(max_steps, 8), **common)
     elif name == "plan-react":
         engine = PlanReactEngine(
             models, max_steps=max_steps, react_iterations=max_steps, **common
         )
     elif name == "plan-reflection":
         engine = PlanReflectionEngine(
-            models, max_steps=max_steps, review_rounds=max_steps, **common
+            models, max_steps=max_steps, review_rounds=min(max_steps, 2), **common
         )
     elif name == "react-reflection":
         engine = ReactReflectionEngine(
-            models, react_iterations=max_steps, review_rounds=max_steps, **common
+            models, react_iterations=max_steps, review_rounds=min(max_steps, 2), **common
         )
     else:
         return None
@@ -594,7 +596,12 @@ def main() -> int:
         action="store_true",
         help="同时运行 direct/reflection 等不修改文件系统的引擎（默认排除）。",
     )
-    parser.add_argument("--max-steps", type=int, default=3)
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=STANDARD_STEP_BUDGET,
+        help="单引擎步数预算（冻结为 120；次级审查轮次另有独立上限）",
+    )
     parser.add_argument("--request-timeout", type=float, default=60)
     parser.add_argument("--engine-timeout", type=float, default=900)
     parser.add_argument("--prepare-timeout", type=float, default=1800)

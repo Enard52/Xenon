@@ -163,7 +163,7 @@ class PlanExecuteEngine(PlanDAGExecutorMixin, BaseEngine):
         self,
         model_priority: list[str],
         *,
-        max_steps: int = 40,
+        max_steps: int = 120,
         system_prompt: str | None = None,
         callback: EngineCallback | None = None,
         model_configs: dict[str, Any] | None = None,
