@@ -6,7 +6,7 @@ This document provides a comprehensive guide for developers contributing to Xeno
 
 ## 1. Environment Setup (环境准备)
 
-Xenon supports Python 3.10 through 3.12 (with 3.12 recommended for primary development).
+Xenon requires Python 3.10 or newer; CI runs the test matrix on 3.10, 3.11 and 3.12 (3.12 is the primary development version).
 
 ### Python Development Environment
 ```bash
@@ -88,6 +88,8 @@ CI validates on Ubuntu, Windows, and macOS. When developing locally, keep in min
 - **Linux:**
   - Reference environment matching GitHub Actions `ubuntu-latest`.
 
+> Tracking issue for platform hardening (known Windows baseline failures, wider smoke subsets): [#119](https://github.com/xianyu-sheng/Xenon/issues/119).
+
 ---
 
 ## 4. Brand Asset Pipeline (品牌资产生成管线)
@@ -103,11 +105,13 @@ npm run render
 ```
 
 ### Output Artifacts
-The render pipeline outputs directly to `docs/`:
+The render pipeline writes:
+- `xenon/utils/_brand_frames.py` — terminal animation frame table (played by `xenon/utils/logo.py`).
 - `docs/logo.svg` — Scalable vector logo.
 - `docs/logo.png` — High-resolution static image.
-- `docs/logo-animated.gif` — Animated runner sequence.
-- `docs/demo.gif` — Terminal demonstration animation.
+- `docs/logo-animated.gif` — Animated runner sequence (embedded in the README).
+
+`docs/demo.gif` is a hand-recorded terminal demo and is **not** produced by this pipeline.
 
 > **Rule:** Only re-render and commit brand assets when changing the animation storyboard or source branding logic in `scripts/brand/src/`.
 
@@ -117,8 +121,13 @@ The render pipeline outputs directly to `docs/`:
 
 The `evals/` directory contains benchmarking and task evaluation suites for evaluating Xenon's agent reasoning and tool usage.
 
-- **Offline Mock Evaluations:**
-  Can run completely offline using deterministic test fixtures without incurring API costs.
+- **Offline mock evaluations** — deterministic fixtures, no API cost:
+
+  ```bash
+  python evals/runner.py --mode mock
+  ```
+
+  The report is written to `evals/reports/mock_report.md`. Real-model runs (`--mode real`) need provider credentials and are not part of CI.
 - **Benchmark Catalogs:**
   See `docs/XENON_BENCHMARK_CATALOG.md` and `docs/XENON_EVAL_PROTOCOL.md` for methodology and protocol definitions.
 
@@ -128,9 +137,9 @@ The `evals/` directory contains benchmarking and task evaluation suites for eval
 
 1. **Find an Unassigned Issue:**
    Always check that an issue has no assignee before starting. Good starting points include:
-   - **#121:** `chore: add Dependabot and a dependency upgrade policy`
-   - **#125:** `docs: English set for GUIDE / ARCHITECTURE / EXTENDING`
-   - **#127:** `quality: expand Ruff ruleset — phase 1 (isort), phase 2 (bugbear)`
+   - **#127:** `quality: expand Ruff ruleset — phase 1 (isort)` (good first issue)
+   - **#120:** `quality: introduce incremental static type checking (mypy)`
+   - **#126:** `evals: deterministic offline replay subset in CI`
 2. **Comment to Claim:**
    Leave a comment on the issue stating you are working on it so duplicate efforts are avoided.
 3. **Mandatory CI Evidence:**
