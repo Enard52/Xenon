@@ -29,13 +29,18 @@
 
 <sub>简化示意；真实界面会展示每次工具调用的完整记录。</sub>
 
+## 快速开始
+
 ```bash
-# 30 秒安装（无需 PyPI）
+# 从 GitHub Releases 安装（不依赖 PyPI）
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
+
 xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 ```
 
-> **Windows 提示：** 如果提示 `'xenon' 不是内部或外部命令`，说明 Scripts 目录不在 PATH——pip 安装时通常会打印 `WARNING: The script xenon.exe is installed in '...' which is not on PATH`，按那个路径运行，或把它加进 PATH；也可以直接用 `python -m xenon`（v0.9.4+）。混用 conda 和独立 Python 时，建议用专用 venv：`python -m venv .venv`。
+> **Windows：** 若提示 `'xenon' 不是内部或外部命令`，把 pip 打印的 Scripts 路径加进 PATH，或直接使用 `python -m xenon`（v0.9.4 起随发布产物提供）。混用 conda 与独立 Python 时建议用专用 venv：`python -m venv .venv`。
+
+更多安装方式（源码 / uv / pipx）见 [安装](#安装)。
 
 ## 它具体做什么
 
@@ -43,6 +48,8 @@ xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 - **只有一个阻断类校验。** "空洞回答"（没干活、答非所问）是确定性的，命中就同回合反馈重试、同因熔断；语义类问题不阻断交付，而是整理成随答案输出的「待人工核验清单」。
 - **每个回合是一棵树上的节点。** `/rewind` 回退、`/fork` 分叉；中断或熔断后，裸敲"继续"会自动从那个节点接上，不用重述上下文。
 - **越权操作要走审批。** 工作区内写文件不打扰你；越界写和命令会弹统一面板（带 diff 预览），授权可以按目标和时长限定，子代理默认只读。
+- **工具输出带来源标记，注入模式有非阻断告警。** 文件、网页、GitHub、MCP 与命令输出都会标注来源与可信度；命中常见提示注入模式时给出可见警告，审批面板会注明"该动作可能受不可信内容影响"。检测只提醒、不阻断，也不改写原内容——范围与限制见[工具输出威胁模型](docs/THREAT_MODEL.md)。
+- **路由会从你的手动选择中学习。** 智能路由的推荐被 `/mode` 覆盖后，同类任务下偏好范式会获得小幅置信度加权；偏好只留在本地，删除 `~/.xenon/routing_preferences.json` 即可重置。
 - **大文件截断、上下文超限都如实标注，** 不伪装完整。
 
 ## 一个回合怎么走
@@ -73,21 +80,6 @@ xenon   # 首次运行会引导配置（API Key、模型、推理引擎）
 
 <img src="docs/evidence-chain.png" alt="/evidence 输出示例" width="720">
 
-## 安装
-
-```bash
-# 方式一：从 GitHub Releases 安装 wheel（推荐）
-pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
-
-# 方式二：源码安装（editable，浅克隆省流量）
-git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
-cd Xenon && python -m venv .venv
-.venv/Scripts/python -m pip install -e .        # Windows
-source .venv/bin/activate && pip install -e .   # Linux / macOS
-```
-
-也可以用 `uv tool install <wheel URL>` 或 `pipx install <wheel URL>`，入口会自动处理。
-
 ## 常用命令
 
 ```
@@ -99,6 +91,37 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 ```
 
 启动时先选会话：直接敲 `xenon` 会弹会话选择器（数字选历史会话或新对话），`xenon resume` 恢复最近一次。恢复后会回放对话历史。
+
+## 安装
+
+```bash
+# 方式一：从 GitHub Releases 安装 wheel（推荐，不依赖 PyPI）
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
+xenon --version   # 验证安装
+
+# 方式二：源码安装（editable，浅克隆省流量）
+git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
+cd Xenon && python -m venv .venv
+.venv/Scripts/python -m pip install -e .        # Windows
+source .venv/bin/activate && pip install -e .   # Linux / macOS
+```
+
+也可以用 `uv tool install <wheel URL>` 或 `pipx install <wheel URL>`，入口会自动处理。
+
+## 文档
+
+| 主题 | 中文 | English |
+|---|---|---|
+| 操作手册 / Quick Start | [OPERATION_GUIDE](docs/OPERATION_GUIDE.md) | [GUIDE](docs/GUIDE.md) |
+| 架构设计 | [ARCHITECTURE](docs/ARCHITECTURE.md) | [ARCHITECTURE.en](docs/ARCHITECTURE.en.md) |
+| 扩展开发（MCP / 子代理 / 钩子 / 自定义命令） | [EXTENDING](docs/EXTENDING.md) | [EXTENDING.en](docs/EXTENDING.en.md) |
+| 与 Aider / Claude Code / OpenCode / Crush 对比 | [COMPARISON](docs/COMPARISON.md) | [COMPARISON.en](docs/COMPARISON.en.md) |
+| 工具输出威胁模型 | [THREAT_MODEL](docs/THREAT_MODEL.md) | — |
+| 开发者指南（测试配方 / 平台差异 / 品牌管线） | [DEVELOPMENT](docs/DEVELOPMENT.md) | — |
+| 观测层（AgentOps）设计 P0 | [OBSERVABILITY](docs/OBSERVABILITY.md) | — |
+| TUI 设计与操作 | [TUI](docs/TUI.md) | — |
+| 评测协议 / 评测结果 | [EVAL_PROTOCOL](docs/XENON_EVAL_PROTOCOL.md) · [EVAL_RESULTS](docs/EVAL_RESULTS.md) | — |
+| 更新日志 | [CHANGELOG](CHANGELOG.md) | — |
 
 ## 环境变量
 
@@ -118,10 +141,10 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 | `XENON_HOOKS` | 本地 hooks 开关 | 开 |
 | `GITHUB_TOKEN` / `GH_TOKEN` | GitHub 工具认证（提升 API 限额） | 空 |
 
-## Windows
+## 平台支持
 
-- Windows Terminal (ConPTY) + PowerShell 全功能支持（粘贴、中文输入法、方向键）。
-- `XENON_TERMINAL_ANIMATION=0` 关闭动画。
+- **Windows**：Windows Terminal (ConPTY) + PowerShell 全功能支持（粘贴、中文输入法、方向键）；`python -m xenon` 自 v0.9.4 起随发布产物提供。
+- **Linux / macOS**：常规终端即可；`XENON_TERMINAL_ANIMATION=0` 关闭启动动画。
 
 ## 诚实边界
 
@@ -129,9 +152,17 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 - **哈希链证明的是过程，不是结论。** 它保证事件流未被篡改，不保证模型答对了。
 - **链本身是无密钥锚点的完整性检查。** 能发现偶然损坏、单点篡改和重排，防不住"有写权限的人整链重算"；需要强抗篡改请把事件目录放到受控存储。（可选 HMAC 锚点见 #106）
 - **沙箱是检测 + 软件边界，不是真隔离。** 不可信代码请在 WSL / Docker 容器里运行。
-- **工具输出的注入检测是启发式提醒，不是安全边界。** Xenon 会标记来源并提示常见注入模式，但不会阻断或改写内容；范围与限制见 [工具输出威胁模型](docs/THREAT_MODEL.md)。
+- **工具输出的注入检测是启发式提醒，不是安全边界。** Xenon 会标记来源并提示常见注入模式，但不会阻断或改写内容；范围与限制见[工具输出威胁模型](docs/THREAT_MODEL.md)。
 - `/review` 的回退只覆盖有 `.bak` 备份的编辑；版本管理仍请交给 git。
 - 意图分类器默认走最快可用的模型，约 1 秒延迟；不可用时会降级为正则（偏保守）。
+
+## 参与贡献
+
+- 贡献流程与 PR 的 CI 证据要求：[CONTRIBUTING](CONTRIBUTING.md)（含 English 段落）
+- 本地开发、测试配方与平台差异：[DEVELOPMENT](docs/DEVELOPMENT.md)
+- 适合新人的任务：[good first issue](https://github.com/xianyu-sheng/Xenon/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- 质量门禁：Linux 全量离线测试 + Windows/macOS 平台冒烟 + Codecov 覆盖率；离线套件 3,000+ 用例
+- 如果 Xenon 对你有帮助，欢迎点一个 ⭐
 
 ## 收录
 

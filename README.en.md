@@ -29,13 +29,18 @@ Other agents say "done" and you take their word for it. Xenon splits the result 
 
 <sub>Simplified illustration; the real UI shows the full record of every tool call.</sub>
 
+## Quick start
+
 ```bash
-# 30-second install (no PyPI required)
+# Install from GitHub Releases (no PyPI required)
 pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
+
 xenon   # first run walks you through setup (API key, model, engine)
 ```
 
-> **Windows:** if you get `'xenon' is not recognized`, the Scripts directory is not on `PATH` — pip usually prints `WARNING: The script xenon.exe is installed in '...' which is not on PATH`; run that path, add it to `PATH`, or use `python -m xenon` (v0.9.4+). Mixing conda with a standalone Python? Use a dedicated venv: `python -m venv .venv`.
+> **Windows:** if you get `'xenon' is not recognized`, add the Scripts path pip printed to `PATH`, or use `python -m xenon` (available in release artifacts since v0.9.4). Mixing conda with a standalone Python? Use a dedicated venv: `python -m venv .venv`.
+
+More install options (source / uv / pipx) are in [Install](#install).
 
 ## What it actually does
 
@@ -43,6 +48,8 @@ xenon   # first run walks you through setup (API key, model, engine)
 - **Exactly one blocking check.** "Hollow answers" (no work done, non-answers) are deterministic — caught, fed back for a retry, and fused if the same cause repeats. Semantic doubts never block delivery; they ship as a manual-verification checklist next to the answer.
 - **Every turn is a node in a tree.** `/rewind` goes back, `/fork` branches; after an interruption or fuse, typing "continue" resumes from that node without re-explaining context.
 - **Boundary actions ask first.** In-workspace writes don't interrupt you; out-of-boundary writes and commands open a unified panel with a diff preview, and approvals can be scoped by target and TTL. Subagents are read-only by default.
+- **Tool output carries provenance, and injection patterns get a non-blocking warning.** File, web, GitHub, MCP and command output is tagged with its source and trust level; common prompt-injection patterns produce a visible warning, and the approval panel notes when an action may be driven by untrusted content. Detection only warns — it never blocks or rewrites content. Scope and limitations: [tool-output threat model](docs/THREAT_MODEL.md).
+- **Routing learns from your manual choices.** When you override the auto-router with `/mode`, the preferred paradigm gets a small confidence boost for similar tasks; preferences stay local — delete `~/.xenon/routing_preferences.json` to reset them.
 - **Truncation and context limits are labeled honestly** instead of being papered over.
 
 ## How a turn runs
@@ -73,21 +80,6 @@ Semantic judgement lives in exactly one place (`xenon/turn/gate.py`); engines do
 
 <img src="docs/evidence-chain.png" alt="/evidence output example" width="720">
 
-## Install
-
-```bash
-# Option 1 — install the wheel from GitHub Releases (recommended)
-pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
-
-# Option 2 — from source (editable; shallow clone saves bandwidth)
-git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
-cd Xenon && python -m venv .venv
-.venv/Scripts/python -m pip install -e .        # Windows
-source .venv/bin/activate && pip install -e .   # Linux / macOS
-```
-
-`uv tool install <wheel URL>` and `pipx install <wheel URL>` work too and handle the entry point for you.
-
 ## Common commands
 
 ```
@@ -99,6 +91,37 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 ```
 
 On start, `xenon` shows a session picker first (pick a history entry by number, or a fresh session); `xenon resume` restores the most recent one and replays the conversation.
+
+## Install
+
+```bash
+# Option 1 — wheel from GitHub Releases (recommended, no PyPI required)
+pip install https://github.com/xianyu-sheng/Xenon/releases/download/v0.9.4/xenon_harness-0.9.4-py3-none-any.whl
+xenon --version   # verify the install
+
+# Option 2 — from source (editable; shallow clone saves bandwidth)
+git clone --depth 1 https://github.com/xianyu-sheng/Xenon.git
+cd Xenon && python -m venv .venv
+.venv/Scripts/python -m pip install -e .        # Windows
+source .venv/bin/activate && pip install -e .   # Linux / macOS
+```
+
+`uv tool install <wheel URL>` and `pipx install <wheel URL>` work too and handle the entry point for you.
+
+## Documentation
+
+| Topic | 中文 | English |
+|---|---|---|
+| Operation manual / quick start | [OPERATION_GUIDE](docs/OPERATION_GUIDE.md) | [GUIDE](docs/GUIDE.md) |
+| Architecture | [ARCHITECTURE](docs/ARCHITECTURE.md) | [ARCHITECTURE.en](docs/ARCHITECTURE.en.md) |
+| Extending (MCP / subagents / hooks / commands) | [EXTENDING](docs/EXTENDING.md) | [EXTENDING.en](docs/EXTENDING.en.md) |
+| Comparison vs Aider / Claude Code / OpenCode / Crush | [COMPARISON](docs/COMPARISON.md) | [COMPARISON.en](docs/COMPARISON.en.md) |
+| Tool-output threat model | [THREAT_MODEL](docs/THREAT_MODEL.md) | — |
+| Development guide (test recipes / platform notes / brand pipeline) | [DEVELOPMENT](docs/DEVELOPMENT.md) | — |
+| Observability (AgentOps) design, P0 | [OBSERVABILITY](docs/OBSERVABILITY.md) | — |
+| TUI design and usage | [TUI](docs/TUI.md) | — |
+| Eval protocol / eval results | [EVAL_PROTOCOL](docs/XENON_EVAL_PROTOCOL.md) · [EVAL_RESULTS](docs/EVAL_RESULTS.md) | — |
+| Changelog | [CHANGELOG](CHANGELOG.md) | — |
 
 ## Environment variables
 
@@ -118,10 +141,10 @@ On start, `xenon` shows a session picker first (pick a history entry by number, 
 | `XENON_HOOKS` | Local hooks toggle | on |
 | `GITHUB_TOKEN` / `GH_TOKEN` | GitHub tool auth (raises API limits) | empty |
 
-## Windows notes
+## Platform support
 
-- Full support on Windows Terminal (ConPTY) + PowerShell (paste, CJK IME, arrow keys).
-- `XENON_TERMINAL_ANIMATION=0` disables animations.
+- **Windows**: full support on Windows Terminal (ConPTY) + PowerShell (paste, CJK IME, arrow keys); `python -m xenon` ships in release artifacts since v0.9.4.
+- **Linux / macOS**: any standard terminal; `XENON_TERMINAL_ANIMATION=0` disables the startup animation.
 
 ## Honest boundaries
 
@@ -129,8 +152,17 @@ On start, `xenon` shows a session picker first (pick a history entry by number, 
 - **The hash chain proves process, not conclusions.** It shows the event stream was not tampered with; it does not prove the model was right.
 - **The chain is an unkeyed integrity check.** It detects accidental corruption, single-point tampering and reordering; it cannot stop someone with write access from recomputing the whole chain. Put the event directory on controlled storage for stronger guarantees. (Optional HMAC anchor: see #106.)
 - **The sandbox is detection + a software boundary, not real isolation.** Run untrusted code inside WSL/Docker.
+- **Injection detection on tool output is a heuristic advisory, not a security boundary.** Xenon tags sources and warns about common injection patterns, but it never blocks or rewrites content. Scope and limitations: [tool-output threat model](docs/THREAT_MODEL.md).
 - `/review`'s revert only covers edits with `.bak` backups; git is still the version history.
 - The intent classifier uses the fastest model available (~1s); if unavailable it falls back to conservative regexes.
+
+## Contributing
+
+- Contribution flow and the PR "CI evidence" requirement: [CONTRIBUTING](CONTRIBUTING.md)
+- Local setup, test recipes and platform differences: [DEVELOPMENT](docs/DEVELOPMENT.md)
+- Starter tasks: [good first issues](https://github.com/xianyu-sheng/Xenon/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- Quality gates: full offline suite on Linux + Windows/macOS platform smoke + Codecov coverage; 3,000+ offline test cases
+- If Xenon is useful to you, a ⭐ helps more people find it
 
 ## Featured in
 
