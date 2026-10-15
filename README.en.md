@@ -170,6 +170,7 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 - Contribution flow and the PR "CI evidence" requirement: [CONTRIBUTING](CONTRIBUTING.md)
 - Local setup, test recipes and platform differences: [DEVELOPMENT](docs/DEVELOPMENT.md)
 - Starter tasks: [good first issues](https://github.com/xianyu-sheng/Xenon/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- Feature ideas / feedback / roadmap: [Roadmap & Feedback](https://github.com/xianyu-sheng/Xenon/discussions/143)
 - Quality gates: full offline suite on Linux + Windows/macOS platform smoke + Codecov coverage; 3,000+ offline test cases
 - If Xenon is useful to you, a ⭐ helps more people find it
 

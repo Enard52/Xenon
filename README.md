@@ -170,6 +170,7 @@ source .venv/bin/activate && pip install -e .   # Linux / macOS
 - 贡献流程与 PR 的 CI 证据要求：[CONTRIBUTING](CONTRIBUTING.md)（含 English 段落）
 - 本地开发、测试配方与平台差异：[DEVELOPMENT](docs/DEVELOPMENT.md)
 - 适合新人的任务：[good first issue](https://github.com/xianyu-sheng/Xenon/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- 功能建议 / 体验反馈 / 路线图讨论：[路线图与反馈收集](https://github.com/xianyu-sheng/Xenon/discussions/143)
 - 质量门禁：Linux 全量离线测试 + Windows/macOS 平台冒烟 + Codecov 覆盖率；离线套件 3,000+ 用例
 - 如果 Xenon 对你有帮助，欢迎点一个 ⭐
 

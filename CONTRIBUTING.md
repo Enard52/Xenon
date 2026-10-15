@@ -5,6 +5,7 @@
 ## 反馈渠道
 
 - GitHub Issues：缺陷、功能设计与跨平台讨论（中文 / English 均可）。
+- GitHub Discussions：功能建议、体验反馈与路线图见置顶的[路线图与反馈收集](https://github.com/xianyu-sheng/Xenon/discussions/143)。
 - GitHub Pull Requests：正式代码合并入口。
 - 安全问题请勿开公开 issue，按 [SECURITY.md](SECURITY.md) 的流程私下报告。
 
@@ -69,6 +70,8 @@ version; this is a concise English mirror of the essentials.
 
 - **GitHub Issues** — bugs, feature design, cross-platform discussion (Chinese
   or English).
+- **GitHub Discussions** — feature ideas, feedback and the roadmap live in the
+  pinned [Roadmap & Feedback](https://github.com/xianyu-sheng/Xenon/discussions/143) thread.
 - **GitHub Pull Requests** — the merge path for code.
 - Security issues must **not** be filed publicly; follow the private reporting
   process in [SECURITY.md](SECURITY.md).
